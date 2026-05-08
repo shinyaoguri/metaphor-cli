@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release, for example v0.1.0'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.4.app
+
+      - name: Resolve tag
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG_NAME="${{ github.event.inputs.tag }}"
+          else
+            TAG_NAME="${GITHUB_REF_NAME}"
+          fi
+          VERSION="${TAG_NAME#v}"
+          echo "TAG_NAME=${TAG_NAME}" >> "$GITHUB_ENV"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          if [[ "$TAG_NAME" == *-* ]]; then
+            echo "IS_PRERELEASE=true" >> "$GITHUB_ENV"
+          else
+            echo "IS_PRERELEASE=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Ensure arm64 release runner
+        run: |
+          set -euo pipefail
+          ARCH=$(uname -m)
+          if [ "$ARCH" != "arm64" ]; then
+            echo "::error::metaphor-cli release assets are currently macos_arm64 only, but runner arch is $ARCH."
+            exit 1
+          fi
+
+      - name: Stamp version
+        run: |
+          set -euo pipefail
+          perl -0pi -e "s/public static let version = \"[^\"]+\"/public static let version = \"${VERSION}\"/" Sources/MetaphorCLICore/BuildInfo.swift
+
+      - name: Test
+        run: swift test
+
+      - name: Build release binary
+        run: swift build -c release
+
+      - name: Package archive
+        run: |
+          set -euo pipefail
+          mkdir -p dist/payload
+          cp .build/release/metaphor dist/payload/metaphor
+          chmod 755 dist/payload/metaphor
+          ASSET="metaphor-cli_${TAG_NAME}_macos_arm64.tar.gz"
+          tar -czf "dist/${ASSET}" -C dist/payload metaphor
+          (cd dist && shasum -a 256 "${ASSET}" > checksums.txt)
+          echo "ASSET=${ASSET}" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          files: |
+            dist/${{ env.ASSET }}
+            dist/checksums.txt
+          generate_release_notes: true
+          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

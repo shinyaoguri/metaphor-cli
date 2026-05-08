@@ -1,0 +1,169 @@
+import Foundation
+@testable import MetaphorCLICore
+import XCTest
+
+final class MetaphorCLITests: XCTestCase {
+    func testModuleNameSanitizesProjectName() {
+        XCTAssertEqual(NameSanitizer.moduleName(from: "my-sketch"), "MySketch")
+        XCTAssertEqual(NameSanitizer.moduleName(from: "123 waves"), "Sketch123Waves")
+        XCTAssertEqual(NameSanitizer.moduleName(from: "!!!"), "Sketch")
+    }
+
+    func testSemanticVersionComparison() {
+        XCTAssertLessThan(SemanticVersion("0.1.0-dev")!, SemanticVersion("0.1.0")!)
+        XCTAssertLessThan(SemanticVersion("v0.1.0")!, SemanticVersion("v0.2.0")!)
+        XCTAssertLessThan(SemanticVersion("v0.2.0")!, SemanticVersion("v1.0.0")!)
+    }
+
+    func testChecksumLookup() {
+        let text = """
+        111aaa  metaphor-cli_v0.1.0_macos_arm64.tar.gz
+        222bbb  other-file.zip
+        """
+        XCTAssertEqual(
+            Checksum.checksum(for: "metaphor-cli_v0.1.0_macos_arm64.tar.gz", in: text),
+            "111aaa"
+        )
+    }
+
+    func testPackageResolvedReaderFindsMetaphorVersion() {
+        let data = """
+        {
+          "pins" : [
+            {
+              "identity" : "metaphor",
+              "kind" : "remoteSourceControl",
+              "location" : "https://github.com/shinyaoguri/metaphor.git",
+              "state" : {
+                "revision" : "abc",
+                "version" : "0.2.1"
+              }
+            }
+          ],
+          "version" : 2
+        }
+        """.data(using: .utf8)!
+
+        XCTAssertEqual(PackageResolvedReader.metaphorVersion(inResolvedData: data), "0.2.1")
+    }
+
+    func testTemplatePackageUsesLocalMetaphorPath() {
+        let context = TemplateContext(
+            projectName: "Demo",
+            moduleName: "Demo",
+            template: .twoD,
+            metaphorDependency: ".package(path: \"/Users/so/Repos/metaphor\")",
+            metaphorPackageIdentity: "metaphor"
+        )
+
+        let package = TemplateRenderer.packageSwift(context)
+        XCTAssertTrue(package.contains(".package(path: \"/Users/so/Repos/metaphor\")"))
+        XCTAssertTrue(package.contains(".product(name: \"metaphor\", package: \"metaphor\")"))
+    }
+
+    func testAllAppTemplatesRenderProjectNameAndModuleName() {
+        for template in ProjectTemplate.allCases {
+            let context = TemplateContext(
+                projectName: "Demo",
+                moduleName: "Demo",
+                template: template,
+                metaphorDependency: ".package(path: \"/Users/so/Repos/metaphor\")",
+                metaphorPackageIdentity: "metaphor"
+            )
+
+            let app = TemplateRenderer.appSwift(context)
+            XCTAssertTrue(app.contains("final class Demo"), "Template \(template.rawValue) should render module name")
+            XCTAssertFalse(app.contains("\\#("), "Template \(template.rawValue) contains an unrendered raw interpolation")
+            XCTAssertFalse(app.contains("\\##("), "Template \(template.rawValue) contains an unrendered raw interpolation")
+        }
+    }
+
+    func testNewCommandCreatesProjectFiles() throws {
+        let root = temporaryDirectory()
+        let console = BufferedConsole()
+        let runner = RecordingProcessRunner()
+        let tool = CommandLineTool(
+            console: console,
+            processRunner: runner,
+            currentDirectory: root
+        )
+
+        try tool.run(arguments: [
+            "new",
+            "MySketch",
+            "--template",
+            "live",
+            "--metaphor-path",
+            "/Users/so/Repos/metaphor",
+        ])
+
+        let app = root.appendingPathComponent("MySketch/Sources/MySketch/App.swift")
+        let package = root.appendingPathComponent("MySketch/Package.swift")
+        let preset = root.appendingPathComponent("MySketch/Sources/MySketch/Presets/default.json")
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: app.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: package.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: preset.path))
+
+        let packageContents = try String(contentsOf: package)
+        XCTAssertTrue(packageContents.contains(".package(path: \"/Users/so/Repos/metaphor\")"))
+    }
+
+    func testUpdateLibraryDryRun() throws {
+        let root = temporaryDirectory()
+        try """
+        // swift-tools-version: 5.10
+        import PackageDescription
+        let package = Package(
+            name: "Demo",
+            dependencies: [
+                .package(url: "https://github.com/shinyaoguri/metaphor.git", from: "0.2.1")
+            ],
+            targets: [
+                .executableTarget(name: "Demo", dependencies: [.product(name: "metaphor", package: "metaphor")])
+            ]
+        )
+        """.write(to: root.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+
+        let console = BufferedConsole()
+        let tool = CommandLineTool(
+            console: console,
+            processRunner: RecordingProcessRunner(),
+            releaseService: StubReleaseService(),
+            currentDirectory: root
+        )
+
+        try tool.run(arguments: ["update", "library", "--dry-run"])
+
+        XCTAssertTrue(console.output.contains("Would run: swift package update metaphor"))
+    }
+
+    func testNewCommandRefusesNonEmptyDestinationWithoutForce() throws {
+        let root = temporaryDirectory()
+        let destination = root.appendingPathComponent("Existing")
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try "keep".write(to: destination.appendingPathComponent("keep.txt"), atomically: true, encoding: .utf8)
+
+        let tool = CommandLineTool(
+            console: BufferedConsole(),
+            processRunner: RecordingProcessRunner(),
+            currentDirectory: root
+        )
+
+        XCTAssertThrowsError(try tool.run(arguments: ["new", "Existing"])) { error in
+            guard let cliError = error as? CLIError else {
+                XCTFail("Expected CLIError")
+                return
+            }
+            XCTAssertTrue(cliError.message.contains("Destination is not empty"))
+        }
+    }
+
+    private func temporaryDirectory() -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("metaphor-cli-tests")
+            .appendingPathComponent(UUID().uuidString)
+        try! FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+}
