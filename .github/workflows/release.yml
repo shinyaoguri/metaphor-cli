@@ -113,14 +113,32 @@ jobs:
       - name: Package archive
         run: |
           set -euo pipefail
-          mkdir -p dist/payload
+          mkdir -p dist/payload dist/source dist/homebrew
           cp .build/release/metaphor dist/payload/metaphor
           cp -R Templates dist/payload/templates
           chmod 755 dist/payload/metaphor
           ASSET="metaphor-cli_${TAG_NAME}_macos_arm64.tar.gz"
+          LATEST_ASSET="metaphor-cli_macos_arm64.tar.gz"
+          SOURCE_ASSET="metaphor-cli_${TAG_NAME}_source.tar.gz"
           tar -czf "dist/${ASSET}" -C dist/payload metaphor templates
-          (cd dist && shasum -a 256 "${ASSET}" > checksums.txt)
+          cp "dist/${ASSET}" "dist/${LATEST_ASSET}"
+          rsync -a \
+            --exclude=".git" \
+            --exclude=".build" \
+            --exclude=".swiftpm" \
+            --exclude="dist" \
+            ./ "dist/source/metaphor-cli-${VERSION}/"
+          tar -czf "dist/${SOURCE_ASSET}" -C dist/source "metaphor-cli-${VERSION}"
+          (cd dist && shasum -a 256 "${ASSET}" "${LATEST_ASSET}" "${SOURCE_ASSET}" > checksums.txt)
+          SOURCE_SHA="$(awk -v asset="${SOURCE_ASSET}" '$2 == asset { print $1 }' dist/checksums.txt)"
+          sed \
+            -e "s|@TAG_NAME@|${TAG_NAME}|g" \
+            -e "s|@VERSION@|${VERSION}|g" \
+            -e "s|@SOURCE_SHA256@|${SOURCE_SHA}|g" \
+            Packaging/Homebrew/metaphor.rb.template > dist/homebrew/metaphor.rb
           echo "ASSET=${ASSET}" >> "$GITHUB_ENV"
+          echo "LATEST_ASSET=${LATEST_ASSET}" >> "$GITHUB_ENV"
+          echo "SOURCE_ASSET=${SOURCE_ASSET}" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
@@ -128,6 +146,9 @@ jobs:
           tag_name: ${{ env.TAG_NAME }}
           files: |
             dist/${{ env.ASSET }}
+            dist/${{ env.LATEST_ASSET }}
+            dist/${{ env.SOURCE_ASSET }}
+            dist/homebrew/metaphor.rb
             dist/checksums.txt
           generate_release_notes: true
           prerelease: ${{ env.IS_PRERELEASE == 'true' }}

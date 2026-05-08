@@ -159,6 +159,49 @@ final class MetaphorCLITests: XCTestCase {
         XCTAssertTrue(console.output.contains("Would run: swift package update metaphor"))
     }
 
+    func testUpdateSelfDelegatesToHomebrewWhenInstalledByBrew() throws {
+        let console = BufferedConsole()
+        let tool = CommandLineTool(
+            console: console,
+            processRunner: RecordingProcessRunner(),
+            releaseService: StubReleaseService(),
+            currentDirectory: temporaryDirectory(),
+            executablePath: "/opt/homebrew/Cellar/metaphor/0.1.0/bin/metaphor"
+        )
+
+        try tool.run(arguments: ["update", "self"])
+
+        XCTAssertTrue(console.output.contains("metaphor-cli appears to be installed by Homebrew."))
+        XCTAssertTrue(console.output.contains("Run: brew upgrade metaphor"))
+    }
+
+    func testUpdateCheckUsesHomebrewUpgradeHintWhenInstalledByBrew() throws {
+        let root = temporaryDirectory()
+        let console = BufferedConsole()
+        let releases = StubReleaseService()
+        releases.releases["shinyaoguri/metaphor-cli"] = GitHubRelease(
+            tagName: "v9.0.0",
+            name: "v9.0.0",
+            prerelease: false,
+            assets: []
+        )
+
+        let tool = CommandLineTool(
+            console: console,
+            processRunner: RecordingProcessRunner(),
+            releaseService: releases,
+            currentDirectory: root,
+            executablePath: "/opt/homebrew/Cellar/metaphor/0.1.0/bin/metaphor"
+        )
+
+        try tool.run(arguments: ["update", "check"])
+
+        let output = console.output.joined(separator: "\n")
+        XCTAssertTrue(output.contains("[update] metaphor-cli"))
+        XCTAssertTrue(output.contains("Run: brew upgrade metaphor"))
+        XCTAssertFalse(output.contains("Run: metaphor update self"))
+    }
+
     func testNewCommandRefusesNonEmptyDestinationWithoutForce() throws {
         let root = temporaryDirectory()
         let destination = root.appendingPathComponent("Existing")

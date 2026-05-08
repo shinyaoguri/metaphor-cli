@@ -49,6 +49,7 @@ public struct UpdateCommand {
 
     private func check() throws {
         console.write("Checking for updates...")
+        let managedInstaller = managedInstallerForCurrentExecutable()
 
         do {
             let cliRelease = try latestCLIRelease()
@@ -62,7 +63,7 @@ public struct UpdateCommand {
                 console.write("[ok] metaphor-cli is up to date (\(BuildInfo.version))")
             case .available:
                 console.write("[update] metaphor-cli \(BuildInfo.version) -> \(cliRelease.tagName)")
-                console.write("         Run: metaphor update self")
+                console.write("         Run: \(managedInstaller?.upgradeCommand ?? "metaphor update self")")
             case .unknown:
                 console.write("[info] metaphor-cli latest release: \(cliRelease.tagName)")
             }
@@ -95,6 +96,12 @@ public struct UpdateCommand {
     }
 
     private func updateSelf(options: ParsedOptions) throws {
+        if let managedInstaller = managedInstallerForCurrentExecutable() {
+            console.write("metaphor-cli appears to be installed by \(managedInstaller.name).")
+            console.write("Run: \(managedInstaller.upgradeCommand)")
+            return
+        }
+
         let release = try latestCLIRelease()
         let status = updateStatus(current: BuildInfo.version, latest: release.tagName)
         if status == .upToDate, !options.flag("force") {
@@ -311,6 +318,36 @@ public struct UpdateCommand {
         #endif
     }
 
+    private func managedInstallerForCurrentExecutable() -> ManagedInstaller? {
+        for url in candidateExecutableURLs() {
+            let paths = [
+                url.standardizedFileURL.path,
+                url.resolvingSymlinksInPath().standardizedFileURL.path,
+            ]
+
+            for path in paths {
+                if path.contains("/Cellar/metaphor/") {
+                    return ManagedInstaller(name: "Homebrew", upgradeCommand: "brew upgrade metaphor")
+                }
+                if path.contains("/Cellar/metaphor-cli/") {
+                    return ManagedInstaller(name: "Homebrew", upgradeCommand: "brew upgrade metaphor-cli")
+                }
+            }
+        }
+        return nil
+    }
+
+    private func candidateExecutableURLs() -> [URL] {
+        var urls: [URL] = []
+        if executablePath.contains("/") {
+            urls.append(PathResolver.url(from: executablePath, relativeTo: currentDirectory))
+        }
+        if let path = executablePathInPATH() {
+            urls.append(path)
+        }
+        return urls
+    }
+
     private func message(for error: Error) -> String {
         if let cliError = error as? CLIError {
             return cliError.message
@@ -364,6 +401,11 @@ public struct UpdateCommand {
       --install-path   Override CLI install path for `update self`
       --no-verify      Allow self update without checksums.txt verification
     """
+}
+
+private struct ManagedInstaller {
+    let name: String
+    let upgradeCommand: String
 }
 
 private enum UpdateStatus {
