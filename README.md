@@ -22,9 +22,8 @@ metaphor run
 
 ## Quick Start
 
-インストール済みなら、これだけで始められます。
-
 ```bash
+brew install shinyaoguri/tap/metaphor
 metaphor new MySketch
 cd MySketch
 metaphor run
@@ -40,6 +39,7 @@ metaphor run
 ```
 
 生成されるプロジェクトは通常の Swift Package なので、`swift run` でも実行できます。
+Homebrew を使わない導線は [Install](#install) を参照してください。
 
 ## Requirements
 
