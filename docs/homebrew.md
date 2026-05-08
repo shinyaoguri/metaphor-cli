@@ -1,7 +1,7 @@
 # Homebrew Packaging
 
-`metaphor-cli` は将来的に Homebrew tap からインストールできるようにする想定です。
-ユーザー向けには最終的に次の導線を目指します。
+`metaphor-cli` は `shinyaoguri/homebrew-tap` からインストールできます。
+ユーザー向けの推奨導線は次のコマンドです。
 
 ```bash
 brew install shinyaoguri/tap/metaphor
@@ -16,8 +16,8 @@ brew install metaphor
 
 ## Tap Repository
 
-Homebrew の tap は通常、Formula を置くための別リポジトリとして管理します。
-GitHub で `shinyaoguri/homebrew-tap` を作成し、次のファイルを置きます。
+Homebrew の tap は Formula を置くための別リポジトリとして管理します。
+このプロジェクトでは `shinyaoguri/homebrew-tap` を使います。
 
 ```text
 homebrew-tap/
@@ -43,8 +43,8 @@ Formula は prebuilt binary ではなく source tarball から SwiftPM build し
 - `checksums.txt` - 配布物の sha256
 
 `Packaging/Homebrew/metaphor.rb.template` が Formula の元になります。
-リリース時に `@TAG_NAME@`、`@VERSION@`、`@SOURCE_SHA256@` が埋め込まれた
-`metaphor.rb` が release asset として出力されます。
+リリース時に `@TAG_NAME@`、`@SOURCE_SHA256@` が埋め込まれた `metaphor.rb`
+が release asset として出力されます。
 
 ## Release Checklist
 
@@ -52,10 +52,12 @@ Formula は prebuilt binary ではなく source tarball から SwiftPM build し
 2. GitHub Release に `metaphor.rb` と source tarball が添付されていることを確認する。
 3. `shinyaoguri/homebrew-tap` の `Formula/metaphor.rb` を release asset の `metaphor.rb` で更新する。
 4. tap 側で audit と install test を走らせる。
+5. tap repo に commit / push する。
 
 ```bash
 brew audit --strict --online Formula/metaphor.rb
 brew install --build-from-source Formula/metaphor.rb
+brew test Formula/metaphor.rb
 metaphor version
 metaphor examples
 ```
@@ -72,3 +74,18 @@ brew upgrade metaphor
 
 `metaphor update library` はユーザーの Swift package 内の `metaphor` 依存を更新するため、
 Homebrew インストール時でもそのまま利用できます。
+
+## PATH Shadowing
+
+direct installer や `make install` で入れた `~/.local/bin/metaphor` が残っていると、
+Homebrew 版より先に実行されることがあります。
+
+```bash
+command -v metaphor
+```
+
+Homebrew 版を使いたい場合は、古いバイナリを削除するか `PATH` の順序を調整してください。
+
+```bash
+rm -f ~/.local/bin/metaphor
+```

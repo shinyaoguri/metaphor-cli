@@ -49,20 +49,39 @@ metaphor run
 
 ## Install
 
-### Homebrew (planned)
+### Homebrew
 
-将来的には Homebrew tap から次のように入れられる形にします。
+通常の利用では Homebrew を推奨します。リポジトリを clone する必要はありません。
 
 ```bash
 brew install shinyaoguri/tap/metaphor
 ```
 
-この導線ではリポジトリの clone は不要で、Homebrew がビルド、配置、更新を管理します。
-準備内容とリリース手順は [docs/homebrew.md](docs/homebrew.md) にまとめています。
+確認:
+
+```bash
+metaphor version
+metaphor --help
+metaphor doctor
+```
+
+更新:
+
+```bash
+brew upgrade metaphor
+```
+
+以前に direct installer や `make install` で `~/.local/bin/metaphor` を入れていた場合、
+Homebrew 版より先に見つかることがあります。その場合は古いバイナリを削除するか、
+`PATH` の順序を調整してください。
+
+```bash
+rm -f ~/.local/bin/metaphor
+```
 
 ### Direct Installer
 
-通常の利用ではリポジトリを clone する必要はありません。最新リリースのバイナリを直接インストールします。
+Homebrewを使わない場合は、最新リリースのバイナリを直接インストールできます。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/shinyaoguri/metaphor-cli/main/scripts/install.sh | bash
@@ -186,7 +205,7 @@ metaphor new ShaderLab --template shader
 metaphor update
 ```
 
-CLI本体を GitHub Releases から更新:
+direct installer で入れたCLI本体を GitHub Releases から更新:
 
 ```bash
 metaphor update self
