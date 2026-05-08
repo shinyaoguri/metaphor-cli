@@ -104,6 +104,25 @@ jobs:
           set -euo pipefail
           perl -0pi -e "s/public static let version = \"[^\"]+\"/public static let version = \"${VERSION}\"/" Sources/MetaphorCLICore/BuildInfo.swift
 
+      # Pin BuildInfo.defaultMetaphorVersion to the latest stable metaphor
+      # library tag so that `metaphor new` has a sensible offline fallback
+      # when the GitHub Releases API is unreachable. `releases/latest`
+      # excludes prereleases and drafts. If metaphor has no stable release
+      # yet, keep whatever value is already in BuildInfo.swift.
+      - name: Pin default metaphor library version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          LATEST=$(gh api repos/shinyaoguri/metaphor/releases/latest --jq .tag_name 2>/dev/null || true)
+          if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
+            echo "::warning::Could not fetch metaphor latest release; keeping existing defaultMetaphorVersion"
+            exit 0
+          fi
+          LATEST_VERSION="${LATEST#v}"
+          echo "Pinning defaultMetaphorVersion to ${LATEST_VERSION}"
+          perl -0pi -e "s/public static let defaultMetaphorVersion = \"[^\"]+\"/public static let defaultMetaphorVersion = \"${LATEST_VERSION}\"/" Sources/MetaphorCLICore/BuildInfo.swift
+
       - name: Test
         run: swift test
 
