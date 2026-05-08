@@ -133,7 +133,6 @@ jobs:
           SOURCE_SHA="$(awk -v asset="${SOURCE_ASSET}" '$2 == asset { print $1 }' dist/checksums.txt)"
           sed \
             -e "s|@TAG_NAME@|${TAG_NAME}|g" \
-            -e "s|@VERSION@|${VERSION}|g" \
             -e "s|@SOURCE_SHA256@|${SOURCE_SHA}|g" \
             Packaging/Homebrew/metaphor.rb.template > dist/homebrew/metaphor.rb
           echo "ASSET=${ASSET}" >> "$GITHUB_ENV"
