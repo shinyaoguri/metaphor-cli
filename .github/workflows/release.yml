@@ -154,3 +154,32 @@ jobs:
           prerelease: ${{ env.IS_PRERELEASE == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- Push the generated Formula to shinyaoguri/homebrew-tap ---
+      # Only stable releases land in the tap. Prereleases stay attached to the
+      # GitHub Release for direct installer / manual `brew install <url>` use.
+      - name: Checkout homebrew-tap
+        if: env.IS_PRERELEASE == 'false'
+        uses: actions/checkout@v6
+        with:
+          repository: shinyaoguri/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+          fetch-depth: 1
+
+      - name: Update Formula in homebrew-tap
+        if: env.IS_PRERELEASE == 'false'
+        run: |
+          set -euo pipefail
+          mkdir -p tap/Formula
+          cp dist/homebrew/metaphor.rb tap/Formula/metaphor.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/metaphor.rb
+          if git diff --cached --quiet; then
+            echo "Formula already up to date."
+            exit 0
+          fi
+          git commit -m "Update metaphor to ${TAG_NAME}"
+          git push

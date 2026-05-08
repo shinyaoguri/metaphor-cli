@@ -46,21 +46,53 @@ Formula は prebuilt binary ではなく source tarball から SwiftPM build し
 リリース時に `@TAG_NAME@`、`@SOURCE_SHA256@` が埋め込まれた `metaphor.rb`
 が release asset として出力されます。
 
-## Release Checklist
+## Release Flow
 
-1. `metaphor-cli` で安定タグを切る、または Release workflow を実行する。
-2. GitHub Release に `metaphor.rb` と source tarball が添付されていることを確認する。
-3. `shinyaoguri/homebrew-tap` の `Formula/metaphor.rb` を release asset の `metaphor.rb` で更新する。
-4. tap 側で audit と install test を走らせる。
-5. tap repo に commit / push する。
+stable リリース時は Release workflow が `shinyaoguri/homebrew-tap` の
+`Formula/metaphor.rb` を自動で更新します。prerelease (`vX.Y.Z-LABEL.N`) の
+ときは tap への反映はスキップされ、GitHub Release に Formula draft が
+添付されるだけになります。
+
+1. `metaphor-cli` で Release workflow を `bump=patch/minor/major` で実行する。
+2. workflow が以下を行う:
+   - source tarball / バイナリ / `metaphor.rb` を GitHub Release に添付。
+   - stable のときだけ `shinyaoguri/homebrew-tap` を checkout して
+     `Formula/metaphor.rb` を上書き、`Update metaphor to <tag>` という
+     commit を push。
+3. 反映後に tap 側で audit と install test を回す（任意）。
 
 ```bash
-brew audit --strict --online Formula/metaphor.rb
-brew install --build-from-source Formula/metaphor.rb
-brew test Formula/metaphor.rb
+brew update
+brew audit --strict --online shinyaoguri/tap/metaphor
+brew install --build-from-source shinyaoguri/tap/metaphor
+brew test shinyaoguri/tap/metaphor
 metaphor version
 metaphor examples
 ```
+
+## PAT Setup
+
+tap repo への push は `GITHUB_TOKEN` では行えないため、PAT を
+metaphor-cli リポジトリの secret として登録します。
+
+1. GitHub の Settings → Developer settings → Personal access tokens →
+   **Fine-grained tokens** で新規発行する。
+   - Resource owner: `shinyaoguri`
+   - Repository access: `Only select repositories` →
+     `shinyaoguri/homebrew-tap` のみ
+   - Repository permissions:
+     - **Contents**: Read and write
+     - **Metadata**: Read-only (自動付与)
+   - Expiration: 任意（社内ポリシーがあればそれに合わせる）
+2. 発行された token をコピーする。
+3. `metaphor-cli` repo の Settings → Secrets and variables → Actions →
+   New repository secret で登録する。
+   - Name: `HOMEBREW_TAP_TOKEN`
+   - Secret: 上記の token
+4. workflow の `Checkout homebrew-tap` step が `secrets.HOMEBREW_TAP_TOKEN`
+   を参照しているので、これで自動 push が動くようになる。
+
+token を rotate するときは同じ secret 名で値だけ差し替えれば OK。
 
 ## Update Behavior
 
