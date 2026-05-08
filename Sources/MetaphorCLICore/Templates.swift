@@ -84,17 +84,18 @@ public struct TemplateCatalog {
             roots.append(URL(fileURLWithPath: (override as NSString).expandingTildeInPath))
         }
 
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        roots.append(home.appendingPathComponent(".local/share/metaphor/templates"))
-        roots.append(URL(fileURLWithPath: "/usr/local/share/metaphor/templates"))
-        roots.append(URL(fileURLWithPath: "/opt/homebrew/share/metaphor/templates"))
-
+        // Prefer checkout templates when running from source so template edits are immediately testable.
         let sourceFile = URL(fileURLWithPath: #filePath)
         let sourceRoot = sourceFile
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         roots.append(sourceRoot.appendingPathComponent("Templates"))
+
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        roots.append(home.appendingPathComponent(".local/share/metaphor/templates"))
+        roots.append(URL(fileURLWithPath: "/usr/local/share/metaphor/templates"))
+        roots.append(URL(fileURLWithPath: "/opt/homebrew/share/metaphor/templates"))
 
         return roots
     }

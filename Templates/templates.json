@@ -13,6 +13,14 @@
       "destination": "README.md"
     },
     {
+      "source": "common/AGENTS.md.template",
+      "destination": "AGENTS.md"
+    },
+    {
+      "source": "common/PROJECT_BRIEF.md.template",
+      "destination": "PROJECT_BRIEF.md"
+    },
+    {
       "source": "common/gitkeep.template",
       "destination": "Sources/{{MODULE_NAME}}/Resources/Images/.gitkeep"
     },

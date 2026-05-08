@@ -13,3 +13,5 @@ swift run
 ```
 
 The sketch entry point is `Sources/{{MODULE_NAME}}/App.swift`.
+
+For AI-assisted iteration, start with `AGENTS.md` and keep the creative target in `PROJECT_BRIEF.md`.

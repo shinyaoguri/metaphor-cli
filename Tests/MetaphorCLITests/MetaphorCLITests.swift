@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 @testable import MetaphorCLICore
 import XCTest
@@ -48,41 +49,28 @@ final class MetaphorCLITests: XCTestCase {
     }
 
     func testTopLevelHelpListsTemplates() throws {
-        let console = BufferedConsole()
-        let tool = CommandLineTool(
-            console: console,
-            processRunner: RecordingProcessRunner(),
-            releaseService: StubReleaseService(),
-            currentDirectory: temporaryDirectory()
-        )
+        try withSourceTemplates {
+            let console = BufferedConsole()
+            let tool = CommandLineTool(
+                console: console,
+                processRunner: RecordingProcessRunner(),
+                releaseService: StubReleaseService(),
+                currentDirectory: temporaryDirectory()
+            )
 
-        try tool.run(arguments: ["--help"])
+            try tool.run(arguments: ["--help"])
 
-        let help = console.output.joined(separator: "\n")
-        XCTAssertTrue(help.contains("Templates:"))
-        XCTAssertTrue(help.contains("audio-reactive"))
-        XCTAssertTrue(help.contains("raytracing"))
+            let help = console.output.joined(separator: "\n")
+            XCTAssertTrue(help.contains("Templates:"))
+            XCTAssertTrue(help.contains("audio-reactive"))
+            XCTAssertTrue(help.contains("raytracing"))
+        }
     }
 
     func testTemplatePackageUsesLocalMetaphorPath() throws {
-        let catalog = try TemplateCatalog.loadDefault()
-        let template = try XCTUnwrap(catalog.template(named: "2d"))
-        let context = TemplateContext(
-            projectName: "Demo",
-            moduleName: "Demo",
-            template: template,
-            metaphorDependency: ".package(path: \"/Users/so/Repos/metaphor\")",
-            metaphorPackageIdentity: "metaphor"
-        )
-
-        let package = try TemplateRenderer.packageSwift(context, catalog: catalog)
-        XCTAssertTrue(package.contains(".package(path: \"/Users/so/Repos/metaphor\")"))
-        XCTAssertTrue(package.contains(".product(name: \"metaphor\", package: \"metaphor\")"))
-    }
-
-    func testAllAppTemplatesRenderProjectNameAndModuleName() throws {
-        let catalog = try TemplateCatalog.loadDefault()
-        for template in catalog.templates {
+        try withSourceTemplates {
+            let catalog = try TemplateCatalog.loadDefault()
+            let template = try XCTUnwrap(catalog.template(named: "2d"))
             let context = TemplateContext(
                 projectName: "Demo",
                 moduleName: "Demo",
@@ -91,43 +79,76 @@ final class MetaphorCLITests: XCTestCase {
                 metaphorPackageIdentity: "metaphor"
             )
 
-            let app = try TemplateRenderer.appSwift(context, catalog: catalog)
-            XCTAssertTrue(app.contains("final class Demo"), "Template \(template.id) should render module name")
-            XCTAssertFalse(app.contains("\\#("), "Template \(template.id) contains an unrendered raw interpolation")
-            XCTAssertFalse(app.contains("\\##("), "Template \(template.id) contains an unrendered raw interpolation")
-            XCTAssertFalse(app.contains("{{"), "Template \(template.id) contains an unrendered placeholder")
+            let package = try TemplateRenderer.packageSwift(context, catalog: catalog)
+            XCTAssertTrue(package.contains(".package(path: \"/Users/so/Repos/metaphor\")"))
+            XCTAssertTrue(package.contains(".product(name: \"metaphor\", package: \"metaphor\")"))
+        }
+    }
+
+    func testAllAppTemplatesRenderProjectNameAndModuleName() throws {
+        try withSourceTemplates {
+            let catalog = try TemplateCatalog.loadDefault()
+            for template in catalog.templates {
+                let context = TemplateContext(
+                    projectName: "Demo",
+                    moduleName: "Demo",
+                    template: template,
+                    metaphorDependency: ".package(path: \"/Users/so/Repos/metaphor\")",
+                    metaphorPackageIdentity: "metaphor"
+                )
+
+                let app = try TemplateRenderer.appSwift(context, catalog: catalog)
+                XCTAssertTrue(app.contains("final class Demo"), "Template \(template.id) should render module name")
+                XCTAssertFalse(app.contains("\\#("), "Template \(template.id) contains an unrendered raw interpolation")
+                XCTAssertFalse(app.contains("\\##("), "Template \(template.id) contains an unrendered raw interpolation")
+                XCTAssertFalse(app.contains("{{"), "Template \(template.id) contains an unrendered placeholder")
+            }
         }
     }
 
     func testNewCommandCreatesProjectFiles() throws {
-        let root = temporaryDirectory()
-        let console = BufferedConsole()
-        let runner = RecordingProcessRunner()
-        let tool = CommandLineTool(
-            console: console,
-            processRunner: runner,
-            currentDirectory: root
-        )
+        try withSourceTemplates {
+            let root = temporaryDirectory()
+            let console = BufferedConsole()
+            let runner = RecordingProcessRunner()
+            let tool = CommandLineTool(
+                console: console,
+                processRunner: runner,
+                currentDirectory: root
+            )
 
-        try tool.run(arguments: [
-            "new",
-            "MySketch",
-            "--template",
-            "live",
-            "--metaphor-path",
-            "/Users/so/Repos/metaphor",
-        ])
+            try tool.run(arguments: [
+                "new",
+                "MySketch",
+                "--template",
+                "live",
+                "--metaphor-path",
+                "/Users/so/Repos/metaphor",
+            ])
 
-        let app = root.appendingPathComponent("MySketch/Sources/MySketch/App.swift")
-        let package = root.appendingPathComponent("MySketch/Package.swift")
-        let preset = root.appendingPathComponent("MySketch/Sources/MySketch/Presets/default.json")
+            let app = root.appendingPathComponent("MySketch/Sources/MySketch/App.swift")
+            let package = root.appendingPathComponent("MySketch/Package.swift")
+            let agents = root.appendingPathComponent("MySketch/AGENTS.md")
+            let brief = root.appendingPathComponent("MySketch/PROJECT_BRIEF.md")
+            let preset = root.appendingPathComponent("MySketch/Sources/MySketch/Presets/default.json")
 
-        XCTAssertTrue(FileManager.default.fileExists(atPath: app.path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: package.path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: preset.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: app.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: package.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: agents.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: brief.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: preset.path))
 
-        let packageContents = try String(contentsOf: package)
-        XCTAssertTrue(packageContents.contains(".package(path: \"/Users/so/Repos/metaphor\")"))
+            let packageContents = try String(contentsOf: package)
+            XCTAssertTrue(packageContents.contains(".package(path: \"/Users/so/Repos/metaphor\")"))
+
+            let agentsContents = try String(contentsOf: agents)
+            XCTAssertTrue(agentsContents.contains("Sources/MySketch/App.swift"))
+            XCTAssertFalse(agentsContents.contains("{{"))
+
+            let briefContents = try String(contentsOf: brief)
+            XCTAssertTrue(briefContents.contains("# MySketch Brief"))
+            XCTAssertFalse(briefContents.contains("{{"))
+        }
     }
 
     func testUpdateLibraryDryRun() throws {
@@ -229,5 +250,27 @@ final class MetaphorCLITests: XCTestCase {
             .appendingPathComponent(UUID().uuidString)
         try! FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+
+    private func sourceTemplatesDirectory() -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Templates")
+    }
+
+    private func withSourceTemplates<T>(_ body: () throws -> T) rethrows -> T {
+        let key = "METAPHOR_TEMPLATES_PATH"
+        let previousValue = getenv(key).map { String(cString: $0) }
+        setenv(key, sourceTemplatesDirectory().path, 1)
+        defer {
+            if let previousValue {
+                setenv(key, previousValue, 1)
+            } else {
+                unsetenv(key)
+            }
+        }
+        return try body()
     }
 }

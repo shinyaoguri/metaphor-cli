@@ -1,0 +1,37 @@
+# {{PROJECT_NAME}} Brief
+
+Template: `{{TEMPLATE_ID}}`
+
+Use this file to keep the creative target explicit while iterating with AI.
+Short, concrete notes work best.
+
+## Intent
+
+- What should this sketch feel like?
+- What should the viewer notice first?
+- What should change over time?
+
+## Constraints
+
+- Target resolution or aspect ratio:
+- Performance target:
+- Inputs, sensors, audio, OSC, MIDI, or interaction:
+- Required assets:
+
+## Visual Direction
+
+- Palette:
+- Motion:
+- Shapes, materials, or scene motifs:
+- References:
+
+## Iteration Notes
+
+- Keep:
+- Improve:
+- Avoid:
+
+## Current Task Prompt
+
+Paste the next AI task here when you want focused edits.
+

@@ -16,6 +16,7 @@ metaphor run
 
 - `metaphor new` で SwiftPM ベースのスケッチプロジェクトを作成
 - `2d`、`3d`、`shader`、`live`、`audio-reactive`、`raytracing`、`syphon` テンプレートを提供
+- 生成プロジェクトに `AGENTS.md` と `PROJECT_BRIEF.md` を含め、AI と制作意図を共有しやすくする
 - `metaphor run` で現在のスケッチを実行
 - `metaphor doctor` で Swift / Xcode / テンプレート環境を確認
 - `metaphor update` で CLI と `metaphor` ライブラリの更新を確認・適用
@@ -39,6 +40,8 @@ metaphor run
 ```
 
 生成されるプロジェクトは通常の Swift Package なので、`swift run` でも実行できます。
+また、生成プロジェクトには AI アシスタント向けの `AGENTS.md` と、制作意図を短く保つ
+`PROJECT_BRIEF.md` が含まれます。
 Homebrew を使わない導線は [Install](#install) を参照してください。
 
 ## Requirements
