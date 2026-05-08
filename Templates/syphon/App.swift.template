@@ -1,0 +1,30 @@
+import metaphor
+
+@main
+final class {{MODULE_NAME}}: Sketch {
+    var config: SketchConfig {
+        SketchConfig(
+            width: 1920,
+            height: 1080,
+            title: "{{PROJECT_NAME_SWIFT}}",
+            fps: 60,
+            syphonName: "{{PROJECT_NAME_SWIFT}}",
+            windowScale: 0.5,
+            renderLoopMode: .timer(fps: 60)
+        )
+    }
+
+    func draw() {
+        background(0.01, 0.015, 0.025)
+        noStroke()
+
+        for i in 0..<42 {
+            let t = Float(i) / 42.0
+            let angle = time * (0.35 + t) + t * Float.pi * 2
+            let x = width * 0.5 + cos(angle) * width * 0.28
+            let y = height * 0.5 + sin(angle * 1.4) * height * 0.22
+            fill(0.15 + t * 0.6, 0.7, 1.0, 0.72)
+            circle(x, y, 40 + t * 140)
+        }
+    }
+}

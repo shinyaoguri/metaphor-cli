@@ -243,6 +243,7 @@ public struct UpdateCommand {
         do {
             try fileManager.copyItem(at: unpackedBinary, to: installPath)
             try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: installPath.path)
+            try installTemplatesIfPresent(from: tempDir, installPath: installPath)
             try? fileManager.removeItem(at: backupURL)
         } catch {
             if fileManager.fileExists(atPath: backupURL.path),
@@ -251,6 +252,24 @@ public struct UpdateCommand {
             }
             throw error
         }
+    }
+
+    private func installTemplatesIfPresent(from extractedDirectory: URL, installPath: URL) throws {
+        let extractedTemplates = extractedDirectory.appendingPathComponent("templates", isDirectory: true)
+        guard fileManager.fileExists(atPath: extractedTemplates.path) else { return }
+
+        let destination = templateInstallPath(forCLIInstallPath: installPath)
+        try? fileManager.removeItem(at: destination)
+        try fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try fileManager.copyItem(at: extractedTemplates, to: destination)
+    }
+
+    private func templateInstallPath(forCLIInstallPath installPath: URL) -> URL {
+        let binDirectory = installPath.deletingLastPathComponent()
+        let prefix = binDirectory.lastPathComponent == "bin"
+            ? binDirectory.deletingLastPathComponent()
+            : FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local")
+        return prefix.appendingPathComponent("share/metaphor/templates", isDirectory: true)
     }
 
     private func defaultInstallPath() -> URL {

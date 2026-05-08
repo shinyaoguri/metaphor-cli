@@ -1,0 +1,55 @@
+import metaphor
+
+@main
+final class {{MODULE_NAME}}: Sketch {
+    private var chromaShift: CustomPostEffect?
+
+    var config: SketchConfig {
+        SketchConfig(width: 1280, height: 720, title: "{{PROJECT_NAME_SWIFT}}")
+    }
+
+    func setup() {
+        let source = PostProcessShaders.commonStructs + #"""
+        fragment float4 metaphorTemplateChromaShift(
+            PPVertexOut in [[stage_in]],
+            texture2d<float> tex [[texture(0)]],
+            constant PostProcessParams &params [[buffer(0)]]
+        ) {
+            constexpr sampler s(address::clamp_to_edge, filter::linear);
+            float2 uv = in.texCoord;
+            float amount = 0.008 + params.intensity * 0.02;
+            float r = tex.sample(s, uv + float2(amount, 0.0)).r;
+            float g = tex.sample(s, uv).g;
+            float b = tex.sample(s, uv - float2(amount, 0.0)).b;
+            return float4(r, g, b, 1.0);
+        }
+        """#
+
+        do {
+            let effect = try createPostEffect(
+                name: "Chroma Shift",
+                source: source,
+                fragmentFunction: "metaphorTemplateChromaShift"
+            )
+            effect.intensity = 0.35
+            chromaShift = effect
+            addPostEffect(effect)
+        } catch {
+            print("Failed to create post effect: \(error)")
+        }
+    }
+
+    func draw() {
+        background(0.03, 0.035, 0.05)
+        noStroke()
+
+        for i in 0..<18 {
+            let t = Float(i) / 18.0
+            let angle = time * (0.6 + t) + t * Float.pi * 2
+            let x = width * 0.5 + cos(angle) * (130 + t * 240)
+            let y = height * 0.5 + sin(angle * 1.7) * (70 + t * 120)
+            fill(0.2 + t * 0.8, 0.8 - t * 0.45, 1.0, 0.78)
+            circle(x, y, 42 + t * 58)
+        }
+    }
+}

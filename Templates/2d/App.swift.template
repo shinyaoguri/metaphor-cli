@@ -1,0 +1,27 @@
+import metaphor
+
+@main
+final class {{MODULE_NAME}}: Sketch {
+    var config: SketchConfig {
+        SketchConfig(width: 1280, height: 720, title: "{{PROJECT_NAME_SWIFT}}")
+    }
+
+    func setup() {
+        frameRate(60)
+    }
+
+    func draw() {
+        background(0.04, 0.05, 0.07)
+        noStroke()
+
+        let pulse = 0.5 + 0.5 * sin(time * 2.0)
+        let radius = 80 + pulse * 48
+
+        fill(0.9, 0.25 + pulse * 0.3, 0.15)
+        circle(mouseX, mouseY, radius)
+
+        fill(1)
+        textSize(16)
+        text("{{PROJECT_NAME_SWIFT}}", 24, 28)
+    }
+}

@@ -94,6 +94,33 @@ metaphor version
 
 ## Templates
 
+テンプレートは Swift コード内の巨大な文字列ではなく、`Templates/` 配下のファイルとして管理します。
+
+```text
+Templates/
+  templates.json
+  common/
+    Package.swift.template
+    README.md.template
+    default.json.template
+  2d/
+    App.swift.template
+  live/
+    App.swift.template
+```
+
+`templates.json` にテンプレートID、説明、生成ファイルを追加し、各 `.template` ファイルでは次のプレースホルダを使えます。
+
+- `{{PROJECT_NAME}}`
+- `{{PROJECT_NAME_SWIFT}}`
+- `{{PROJECT_NAME_JSON}}`
+- `{{MODULE_NAME}}`
+- `{{TEMPLATE_ID}}`
+- `{{METAPHOR_DEPENDENCY}}`
+- `{{METAPHOR_PACKAGE_IDENTITY_SWIFT}}`
+
+`make install` はテンプレートを `~/.local/share/metaphor/templates` にコピーします。別のテンプレートセットを試す場合は `METAPHOR_TEMPLATES_PATH` を指定できます。
+
 - `2d`
 - `3d`
 - `shader`

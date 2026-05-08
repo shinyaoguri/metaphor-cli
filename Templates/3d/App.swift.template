@@ -1,0 +1,36 @@
+import metaphor
+
+@main
+final class {{MODULE_NAME}}: Sketch {
+    var config: SketchConfig {
+        SketchConfig(width: 1280, height: 720, title: "{{PROJECT_NAME_SWIFT}}")
+    }
+
+    func setup() {
+        frameRate(60)
+        enablePerformanceHUD()
+    }
+
+    func draw() {
+        background(0.02, 0.025, 0.035)
+        lights()
+        noStroke()
+
+        push()
+        translate(width * 0.5, height * 0.5, -120)
+        rotateX(-0.45)
+        rotateY(time * 0.8)
+        metallic(0.2)
+        roughness(0.35)
+        fill(0.95, 0.35, 0.18)
+        box(180)
+        pop()
+
+        push()
+        translate(width * 0.72, height * 0.48, -260)
+        rotateY(-time * 0.55)
+        fill(0.25, 0.62, 1.0)
+        torus(ringRadius: 100, tubeRadius: 26, detail: 36)
+        pop()
+    }
+}

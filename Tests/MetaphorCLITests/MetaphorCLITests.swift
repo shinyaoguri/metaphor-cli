@@ -47,22 +47,42 @@ final class MetaphorCLITests: XCTestCase {
         XCTAssertEqual(PackageResolvedReader.metaphorVersion(inResolvedData: data), "0.2.1")
     }
 
-    func testTemplatePackageUsesLocalMetaphorPath() {
+    func testTopLevelHelpListsTemplates() throws {
+        let console = BufferedConsole()
+        let tool = CommandLineTool(
+            console: console,
+            processRunner: RecordingProcessRunner(),
+            releaseService: StubReleaseService(),
+            currentDirectory: temporaryDirectory()
+        )
+
+        try tool.run(arguments: ["--help"])
+
+        let help = console.output.joined(separator: "\n")
+        XCTAssertTrue(help.contains("Templates:"))
+        XCTAssertTrue(help.contains("audio-reactive"))
+        XCTAssertTrue(help.contains("raytracing"))
+    }
+
+    func testTemplatePackageUsesLocalMetaphorPath() throws {
+        let catalog = try TemplateCatalog.loadDefault()
+        let template = try XCTUnwrap(catalog.template(named: "2d"))
         let context = TemplateContext(
             projectName: "Demo",
             moduleName: "Demo",
-            template: .twoD,
+            template: template,
             metaphorDependency: ".package(path: \"/Users/so/Repos/metaphor\")",
             metaphorPackageIdentity: "metaphor"
         )
 
-        let package = TemplateRenderer.packageSwift(context)
+        let package = try TemplateRenderer.packageSwift(context, catalog: catalog)
         XCTAssertTrue(package.contains(".package(path: \"/Users/so/Repos/metaphor\")"))
         XCTAssertTrue(package.contains(".product(name: \"metaphor\", package: \"metaphor\")"))
     }
 
-    func testAllAppTemplatesRenderProjectNameAndModuleName() {
-        for template in ProjectTemplate.allCases {
+    func testAllAppTemplatesRenderProjectNameAndModuleName() throws {
+        let catalog = try TemplateCatalog.loadDefault()
+        for template in catalog.templates {
             let context = TemplateContext(
                 projectName: "Demo",
                 moduleName: "Demo",
@@ -71,10 +91,11 @@ final class MetaphorCLITests: XCTestCase {
                 metaphorPackageIdentity: "metaphor"
             )
 
-            let app = TemplateRenderer.appSwift(context)
-            XCTAssertTrue(app.contains("final class Demo"), "Template \(template.rawValue) should render module name")
-            XCTAssertFalse(app.contains("\\#("), "Template \(template.rawValue) contains an unrendered raw interpolation")
-            XCTAssertFalse(app.contains("\\##("), "Template \(template.rawValue) contains an unrendered raw interpolation")
+            let app = try TemplateRenderer.appSwift(context, catalog: catalog)
+            XCTAssertTrue(app.contains("final class Demo"), "Template \(template.id) should render module name")
+            XCTAssertFalse(app.contains("\\#("), "Template \(template.id) contains an unrendered raw interpolation")
+            XCTAssertFalse(app.contains("\\##("), "Template \(template.id) contains an unrendered raw interpolation")
+            XCTAssertFalse(app.contains("{{"), "Template \(template.id) contains an unrendered placeholder")
         }
     }
 

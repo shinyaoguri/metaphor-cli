@@ -1,0 +1,15 @@
+# {{PROJECT_NAME}}
+
+A metaphor sketch generated with:
+
+```bash
+metaphor new {{PROJECT_NAME}} --template {{TEMPLATE_ID}}
+```
+
+## Run
+
+```bash
+swift run
+```
+
+The sketch entry point is `Sources/{{MODULE_NAME}}/App.swift`.

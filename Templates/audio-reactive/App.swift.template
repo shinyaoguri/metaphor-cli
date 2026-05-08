@@ -1,0 +1,43 @@
+import metaphor
+
+@main
+final class {{MODULE_NAME}}: Sketch {
+    private var audio: AudioAnalyzer?
+
+    var config: SketchConfig {
+        SketchConfig(width: 1280, height: 720, title: "{{PROJECT_NAME_SWIFT}}")
+    }
+
+    func setup() {
+        audio = createAudioInput(fftSize: 1024)
+        do {
+            try audio?.start()
+        } catch {
+            print("Audio input unavailable: \(error)")
+        }
+    }
+
+    func draw() {
+        audio?.update()
+
+        let bass = audio?.band(0) ?? 0
+        let mids = audio?.band(1) ?? 0
+        let highs = audio?.band(2) ?? 0
+        let volume = audio?.volume ?? 0
+
+        background(0.015, 0.02, 0.03)
+        noStroke()
+
+        let count = 96
+        for i in 0..<count {
+            let t = Float(i) / Float(count)
+            let angle = t * Float.pi * 2 + time * (0.4 + bass * 2.0)
+            let wave = sin(angle * 5 + time * 3) * highs * 120
+            let r = 160 + mids * 260 + wave
+            let x = width * 0.5 + cos(angle) * r
+            let y = height * 0.5 + sin(angle) * r
+            fill(0.2 + highs, 0.45 + bass * 0.5, 1.0, 0.72)
+            circle(x, y, 8 + volume * 70)
+        }
+    }
+}

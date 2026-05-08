@@ -1,6 +1,7 @@
 PRODUCT := metaphor
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
+SHAREDIR ?= $(PREFIX)/share/metaphor
 BUILD_CONFIG ?= release
 INSTALL_BIN := $(BINDIR)/$(PRODUCT)
 
@@ -18,7 +19,11 @@ test:
 install: release
 	mkdir -p "$(BINDIR)"
 	install -m 755 ".build/$(BUILD_CONFIG)/$(PRODUCT)" "$(INSTALL_BIN)"
+	rm -rf "$(SHAREDIR)/templates"
+	mkdir -p "$(SHAREDIR)"
+	cp -R "Templates" "$(SHAREDIR)/templates"
 	@echo "Installed $(PRODUCT) to $(INSTALL_BIN)"
+	@echo "Installed templates to $(SHAREDIR)/templates"
 	@if echo ":$$PATH:" | grep -q ":$(BINDIR):"; then \
 		echo "You can now run: $(PRODUCT) --help"; \
 	else \
@@ -30,7 +35,9 @@ install: release
 
 uninstall:
 	rm -f "$(INSTALL_BIN)"
+	rm -rf "$(SHAREDIR)/templates"
 	@echo "Removed $(INSTALL_BIN)"
+	@echo "Removed $(SHAREDIR)/templates"
 
 doctor:
 	swift run $(PRODUCT) doctor

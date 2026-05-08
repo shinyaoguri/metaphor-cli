@@ -6,10 +6,20 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'Tag to release, for example v0.1.0'
+      bump:
+        description: 'Version bump type'
         required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - prerelease   # increment N in vX.Y.Z-LABEL.N (latest tag must be a prerelease)
+      prerelease_label:
+        description: 'Pre-release label (beta, rc, alpha). Empty = stable. Ignored when bump=prerelease.'
+        required: false
         type: string
+        default: ''
 
 permissions:
   contents: write
@@ -29,11 +39,49 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG_NAME="${{ github.event.inputs.tag }}"
+            BUMP="${{ github.event.inputs.bump }}"
+            LABEL="${{ github.event.inputs.prerelease_label }}"
+
+            if [ "$BUMP" = "prerelease" ]; then
+              LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+              if [[ "$LATEST_TAG" =~ ^(v[0-9]+\.[0-9]+\.[0-9]+)-([a-zA-Z]+)\.([0-9]+)$ ]]; then
+                BASE="${BASH_REMATCH[1]}"
+                PRE_LABEL="${BASH_REMATCH[2]}"
+                N="${BASH_REMATCH[3]}"
+                TAG_NAME="${BASE}-${PRE_LABEL}.$((N + 1))"
+              else
+                echo "::error::bump=prerelease requires the latest tag to be a prerelease (got '$LATEST_TAG'). Use bump=patch/minor/major with prerelease_label to start a new prerelease cycle."
+                exit 1
+              fi
+            else
+              # Find latest STABLE tag (no '-' suffix). sort -V handles version ordering.
+              LATEST_STABLE=$(git tag -l 'v*' | grep -v -- '-' | sort -V | tail -1 || true)
+              LATEST_STABLE=${LATEST_STABLE:-v0.0.0}
+              VERSION_NUM=${LATEST_STABLE#v}
+              IFS=. read -r MAJOR MINOR PATCH <<< "$VERSION_NUM"
+              case "$BUMP" in
+                major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+                minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+                patch) PATCH=$((PATCH + 1)) ;;
+              esac
+              TARGET="v${MAJOR}.${MINOR}.${PATCH}"
+
+              if [ -n "$LABEL" ]; then
+                # Find next free vTARGET-LABEL.N
+                N=1
+                while git rev-parse "${TARGET}-${LABEL}.${N}" >/dev/null 2>&1; do
+                  N=$((N + 1))
+                done
+                TAG_NAME="${TARGET}-${LABEL}.${N}"
+              else
+                TAG_NAME="$TARGET"
+              fi
+            fi
           else
             TAG_NAME="${GITHUB_REF_NAME}"
           fi
           VERSION="${TAG_NAME#v}"
+          echo "Computed tag: ${TAG_NAME}"
           echo "TAG_NAME=${TAG_NAME}" >> "$GITHUB_ENV"
           echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
           if [[ "$TAG_NAME" == *-* ]]; then
@@ -67,9 +115,10 @@ jobs:
           set -euo pipefail
           mkdir -p dist/payload
           cp .build/release/metaphor dist/payload/metaphor
+          cp -R Templates dist/payload/templates
           chmod 755 dist/payload/metaphor
           ASSET="metaphor-cli_${TAG_NAME}_macos_arm64.tar.gz"
-          tar -czf "dist/${ASSET}" -C dist/payload metaphor
+          tar -czf "dist/${ASSET}" -C dist/payload metaphor templates
           (cd dist && shasum -a 256 "${ASSET}" > checksums.txt)
           echo "ASSET=${ASSET}" >> "$GITHUB_ENV"
 

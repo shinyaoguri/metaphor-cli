@@ -1,0 +1,25 @@
+// swift-tools-version: 5.10
+
+import PackageDescription
+
+let package = Package(
+    name: "{{PROJECT_NAME_SWIFT}}",
+    platforms: [
+        .macOS(.v14)
+    ],
+    dependencies: [
+        {{METAPHOR_DEPENDENCY}}
+    ],
+    targets: [
+        .executableTarget(
+            name: "{{MODULE_NAME}}",
+            dependencies: [
+                .product(name: "metaphor", package: "{{METAPHOR_PACKAGE_IDENTITY_SWIFT}}")
+            ],
+            resources: [
+                .process("Resources"),
+                .process("Presets"),
+            ]
+        ),
+    ]
+)

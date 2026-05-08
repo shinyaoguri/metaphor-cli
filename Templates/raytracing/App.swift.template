@@ -1,0 +1,61 @@
+import metaphor
+
+@main
+final class {{MODULE_NAME}}: Sketch {
+    private var rayTracer: MPSRayTracer?
+    private var angle: Float = 0
+
+    var config: SketchConfig {
+        SketchConfig(width: 960, height: 540, title: "{{PROJECT_NAME_SWIFT}}", fps: 30)
+    }
+
+    func setup() {
+        do {
+            rayTracer = try createRayTracer(width: 640, height: 360)
+        } catch {
+            print("Ray tracer unavailable: \(error)")
+        }
+    }
+
+    func draw() {
+        background(0.02, 0.025, 0.035)
+        angle += deltaTime
+        renderRayTracedScene()
+
+        if let texture = rayTracer?.outputTexture {
+            image(MImage(texture: texture), 0, 0, width, height)
+        } else {
+            fill(1)
+            textSize(16)
+            text("Ray tracing is unavailable on this device.", 24, 32)
+        }
+    }
+
+    private func renderRayTracedScene() {
+        guard let rayTracer else { return }
+        let device = context.renderer.device
+        rayTracer.clearScene()
+
+        do {
+            let floor = try Mesh.box(device: device, width: 5, height: 0.15, depth: 5)
+            rayTracer.addMesh(floor, transform: float4x4(translation: SIMD3<Float>(0, -1, 0)))
+
+            let box = try Mesh.box(device: device, width: 1.2, height: 1.2, depth: 1.2)
+            let boxTransform = float4x4(rotationY: angle) * float4x4(rotationX: angle * 0.7)
+            rayTracer.addMesh(box, transform: boxTransform)
+
+            try rayTracer.buildAccelerationStructure()
+            rayTracer.trace(
+                mode: .ambientOcclusion(samples: 24, radius: 2.5),
+                camera: (
+                    eye: SIMD3<Float>(0, 0.4, 4.2),
+                    center: SIMD3<Float>(0, 0, 0),
+                    up: SIMD3<Float>(0, 1, 0),
+                    fov: Float.pi / 3
+                )
+            )
+        } catch {
+            print("Ray tracing render failed: \(error)")
+        }
+    }
+}

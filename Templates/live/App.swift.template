@@ -1,0 +1,85 @@
+import metaphor
+
+@main
+final class {{MODULE_NAME}}: Sketch {
+    private var osc: OSCReceiver?
+    private var midi: MIDIManager?
+
+    private var radius: Float = 90
+    private var speed: Float = 1.0
+    private var hue: Float = 0.58
+    private var showTrails = true
+
+    var config: SketchConfig {
+        SketchConfig(width: 1280, height: 720, title: "{{PROJECT_NAME_SWIFT}}")
+    }
+
+    func setup() {
+        enablePerformanceHUD()
+
+        osc = createOSCReceiver(port: 9000)
+        do {
+            try osc?.start()
+        } catch {
+            print("OSC unavailable: \(error)")
+        }
+
+        midi = createMIDI()
+        midi?.start()
+    }
+
+    func draw() {
+        readControls()
+
+        if showTrails {
+            background(0, 0, 0, 0.08)
+        } else {
+            background(0.02)
+        }
+
+        noStroke()
+        colorMode(.hsb, 1)
+        fill(hue, 0.82, 0.95, 0.9)
+
+        let orbit = 180 + radius
+        let x = width * 0.5 + cos(time * speed) * orbit
+        let y = height * 0.5 + sin(time * speed * 1.37) * orbit * 0.55
+        circle(x, y, radius)
+
+        colorMode(.rgb, 1)
+        drawGUI()
+    }
+
+    private func readControls() {
+        for message in osc?.poll() ?? [] {
+            guard let first = message.values.first else { continue }
+            switch (message.address, first) {
+            case ("/radius", .float(let value)):
+                radius = max(20, min(260, value))
+            case ("/speed", .float(let value)):
+                speed = max(0.05, min(6, value))
+            case ("/hue", .float(let value)):
+                hue = max(0, min(1, value))
+            default:
+                break
+            }
+        }
+
+        if let value = midi?.controllerValue(1) {
+            radius = 40 + value * 220
+        }
+        if let value = midi?.controllerValue(2) {
+            speed = 0.1 + value * 5.0
+        }
+    }
+
+    private func drawGUI() {
+        let panel = context.gui
+        panel.begin()
+        panel.slider("radius", &radius, min: 20, max: 260, canvas: context.canvas, input: context.input)
+        panel.slider("speed", &speed, min: 0.05, max: 6, canvas: context.canvas, input: context.input)
+        panel.slider("hue", &hue, min: 0, max: 1, canvas: context.canvas, input: context.input)
+        panel.toggle("trails", &showTrails, canvas: context.canvas, input: context.input)
+        _ = panel.end()
+    }
+}

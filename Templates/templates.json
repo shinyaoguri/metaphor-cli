@@ -1,0 +1,111 @@
+{
+  "commonFiles": [
+    {
+      "source": "common/Package.swift.template",
+      "destination": "Package.swift"
+    },
+    {
+      "source": "common/gitignore.template",
+      "destination": ".gitignore"
+    },
+    {
+      "source": "common/README.md.template",
+      "destination": "README.md"
+    },
+    {
+      "source": "common/gitkeep.template",
+      "destination": "Sources/{{MODULE_NAME}}/Resources/Images/.gitkeep"
+    },
+    {
+      "source": "common/gitkeep.template",
+      "destination": "Sources/{{MODULE_NAME}}/Resources/Models/.gitkeep"
+    },
+    {
+      "source": "common/gitkeep.template",
+      "destination": "Sources/{{MODULE_NAME}}/Resources/Shaders/.gitkeep"
+    },
+    {
+      "source": "common/default.json.template",
+      "destination": "Sources/{{MODULE_NAME}}/Presets/default.json"
+    }
+  ],
+  "templates": [
+    {
+      "id": "2d",
+      "title": "2D sketch",
+      "summary": "Minimal Processing-style 2D sketch.",
+      "files": [
+        {
+          "source": "2d/App.swift.template",
+          "destination": "Sources/{{MODULE_NAME}}/App.swift"
+        }
+      ]
+    },
+    {
+      "id": "3d",
+      "title": "3D sketch",
+      "summary": "Camera, lights, and animated 3D primitives.",
+      "files": [
+        {
+          "source": "3d/App.swift.template",
+          "destination": "Sources/{{MODULE_NAME}}/App.swift"
+        }
+      ]
+    },
+    {
+      "id": "shader",
+      "title": "Custom post-process shader",
+      "summary": "Sketch with a custom Metal post-process effect.",
+      "files": [
+        {
+          "source": "shader/App.swift.template",
+          "destination": "Sources/{{MODULE_NAME}}/App.swift"
+        }
+      ]
+    },
+    {
+      "id": "live",
+      "title": "Live performance controls",
+      "summary": "Parameter GUI, OSC input, MIDI input, and performance HUD.",
+      "files": [
+        {
+          "source": "live/App.swift.template",
+          "destination": "Sources/{{MODULE_NAME}}/App.swift"
+        }
+      ]
+    },
+    {
+      "id": "audio-reactive",
+      "title": "Audio reactive sketch",
+      "summary": "Microphone FFT analysis driving visuals.",
+      "files": [
+        {
+          "source": "audio-reactive/App.swift.template",
+          "destination": "Sources/{{MODULE_NAME}}/App.swift"
+        }
+      ]
+    },
+    {
+      "id": "raytracing",
+      "title": "Metal ray tracing sketch",
+      "summary": "MPS/Metal ray tracing starter scene.",
+      "files": [
+        {
+          "source": "raytracing/App.swift.template",
+          "destination": "Sources/{{MODULE_NAME}}/App.swift"
+        }
+      ]
+    },
+    {
+      "id": "syphon",
+      "title": "Syphon output sketch",
+      "summary": "Fixed-resolution output configured for Syphon.",
+      "files": [
+        {
+          "source": "syphon/App.swift.template",
+          "destination": "Sources/{{MODULE_NAME}}/App.swift"
+        }
+      ]
+    }
+  ]
+}

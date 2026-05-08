@@ -87,6 +87,9 @@ public struct CommandLineTool {
       examples  List available project templates
       version   Print CLI version
 
+    Templates:
+    \(ProjectTemplate.usageList)
+
     Run `metaphor new --help` for project generation options.
     """
 }
@@ -123,9 +126,10 @@ public struct NewCommand {
             throw CLIError("Missing project name. Usage: metaphor new <name>", exitCode: 2)
         }
 
-        let templateName = options.value("template", "t") ?? ProjectTemplate.twoD.rawValue
-        guard let template = ProjectTemplate(rawValue: templateName) else {
-            let names = ProjectTemplate.allCases.map(\.rawValue).joined(separator: ", ")
+        let catalog = try TemplateCatalog.loadDefault()
+        let templateName = options.value("template", "t") ?? "2d"
+        guard let template = catalog.template(named: templateName) else {
+            let names = catalog.templates.map(\.id).joined(separator: ", ")
             throw CLIError("Unknown template '\(templateName)'. Available templates: \(names)", exitCode: 2)
         }
 
@@ -158,7 +162,7 @@ public struct NewCommand {
             metaphorPackageIdentity: packageIdentity
         )
 
-        for file in TemplateRenderer.files(for: context) {
+        for file in try TemplateRenderer.files(for: context, catalog: catalog) {
             try write(file, into: projectURL, overwrite: force)
         }
 
@@ -245,6 +249,9 @@ public struct NewCommand {
       --metaphor-package <name>    Package identity for the metaphor product, default: metaphor
       --git                       Run git init after generation
       --force                     Write into an existing non-empty directory
+
+    Templates:
+    \(ProjectTemplate.usageList)
     """
 }
 
@@ -321,7 +328,11 @@ public struct DoctorCommand {
             console.write("[warn] Package.swift not found in \(currentDirectory.path)")
         }
 
-        console.write("[ok] \(ProjectTemplate.allCases.count) project templates available")
+        if let catalog = try? TemplateCatalog.loadDefault() {
+            console.write("[ok] \(catalog.templates.count) project templates available")
+        } else {
+            console.write("[warn] Project templates are not available")
+        }
     }
 
     private func checkCommand(label: String, arguments: [String]) {
@@ -352,13 +363,9 @@ public struct ExamplesCommand {
     }
 
     public func run() {
-        let lines = ProjectTemplate.allCases.map { template in
-            "  \(template.rawValue.padding(toLength: 16, withPad: " ", startingAt: 0)) \(template.summary)"
-        }.joined(separator: "\n")
-
         console.write("""
         Available templates:
-        \(lines)
+        \(ProjectTemplate.usageList)
 
         Example:
           metaphor new MySketch --template live
