@@ -18,6 +18,7 @@ metaphor run
 - `2d`、`3d`、`shader`、`live`、`audio-reactive`、`raytracing`、`syphon` テンプレートを提供
 - 生成プロジェクトに `AGENTS.md` と `PROJECT_BRIEF.md` を含め、AI と制作意図を共有しやすくする
 - `metaphor run` で現在のスケッチを実行
+- `metaphor watch` でソース変更を監視し、再ビルドしてスケッチを自動再起動
 - `metaphor doctor` で Swift / Xcode / テンプレート環境を確認
 - `metaphor update` で CLI と `metaphor` ライブラリの更新を確認・適用
 
