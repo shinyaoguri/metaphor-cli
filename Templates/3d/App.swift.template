@@ -12,7 +12,7 @@ final class {{MODULE_NAME}}: Sketch {
     }
 
     func draw() {
-        background(0.02, 0.025, 0.035)
+        background(5, 6, 9)
         lights()
         noStroke()
 
@@ -22,14 +22,14 @@ final class {{MODULE_NAME}}: Sketch {
         rotateY(time * 0.8)
         metallic(0.2)
         roughness(0.35)
-        fill(0.95, 0.35, 0.18)
+        fill(242, 89, 46)
         box(180)
         pop()
 
         push()
         translate(width * 0.72, height * 0.48, -260)
         rotateY(-time * 0.55)
-        fill(0.25, 0.62, 1.0)
+        fill(64, 158, 255)
         torus(ringRadius: 100, tubeRadius: 26, detail: 36)
         pop()
     }

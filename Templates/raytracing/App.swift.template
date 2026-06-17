@@ -18,14 +18,14 @@ final class {{MODULE_NAME}}: Sketch {
     }
 
     func draw() {
-        background(0.02, 0.025, 0.035)
+        background(5, 6, 9)
         angle += deltaTime
         renderRayTracedScene()
 
         if let texture = rayTracer?.outputTexture {
             image(MImage(texture: texture), 0, 0, width, height)
         } else {
-            fill(1)
+            fill(255)
             textSize(16)
             text("Ray tracing is unavailable on this device.", 24, 32)
         }
