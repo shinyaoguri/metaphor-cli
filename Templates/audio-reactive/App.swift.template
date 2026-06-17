@@ -25,7 +25,7 @@ final class {{MODULE_NAME}}: Sketch {
         let highs = audio?.band(2) ?? 0
         let volume = audio?.volume ?? 0
 
-        background(0.015, 0.02, 0.03)
+        background(4, 5, 8)
         noStroke()
 
         let count = 96
@@ -36,7 +36,7 @@ final class {{MODULE_NAME}}: Sketch {
             let r = 160 + mids * 260 + wave
             let x = width * 0.5 + cos(angle) * r
             let y = height * 0.5 + sin(angle) * r
-            fill(0.2 + highs, 0.45 + bass * 0.5, 1.0, 0.72)
+            fill(51 + highs * 255, 115 + bass * 127, 255, 184)
             circle(x, y, 8 + volume * 70)
         }
     }

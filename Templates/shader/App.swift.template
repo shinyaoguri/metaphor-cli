@@ -40,7 +40,7 @@ final class {{MODULE_NAME}}: Sketch {
     }
 
     func draw() {
-        background(0.03, 0.035, 0.05)
+        background(8, 9, 13)
         noStroke()
 
         for i in 0..<18 {
@@ -48,7 +48,7 @@ final class {{MODULE_NAME}}: Sketch {
             let angle = time * (0.6 + t) + t * Float.pi * 2
             let x = width * 0.5 + cos(angle) * (130 + t * 240)
             let y = height * 0.5 + sin(angle * 1.7) * (70 + t * 120)
-            fill(0.2 + t * 0.8, 0.8 - t * 0.45, 1.0, 0.78)
+            fill(51 + t * 204, 204 - t * 115, 255, 199)
             circle(x, y, 42 + t * 58)
         }
     }

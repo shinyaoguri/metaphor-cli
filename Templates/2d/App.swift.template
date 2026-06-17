@@ -11,16 +11,20 @@ final class {{MODULE_NAME}}: Sketch {
     }
 
     func draw() {
-        background(0.04, 0.05, 0.07)
+        background(10, 13, 18)
         noStroke()
 
         let pulse = 0.5 + 0.5 * sin(time * 2.0)
         let radius = 80 + pulse * 48
 
-        fill(0.9, 0.25 + pulse * 0.3, 0.15)
-        circle(mouseX, mouseY, radius)
+        // マウスがまだ動いていなければ中央に表示する
+        let x = mouseX > 0 ? mouseX : width / 2
+        let y = mouseY > 0 ? mouseY : height / 2
 
-        fill(1)
+        fill(230, 64 + pulse * 76, 38)
+        circle(x, y, radius)
+
+        fill(255)
         textSize(16)
         text("{{PROJECT_NAME_SWIFT}}", 24, 28)
     }
