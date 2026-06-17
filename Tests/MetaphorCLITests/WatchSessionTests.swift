@@ -1,0 +1,182 @@
+import Foundation
+@testable import MetaphorCLICore
+import XCTest
+
+// MARK: - Mocks
+
+private final class MockLaunchedProcess: LaunchedProcess {
+    private(set) var terminated = false
+    var isRunning: Bool { !terminated }
+    func terminate() { terminated = true }
+}
+
+private final class RecordingLauncher: ProcessLaunching {
+    private(set) var launches: [[String]] = []
+    private(set) var processes: [MockLaunchedProcess] = []
+    var shouldThrow = false
+
+    func launch(
+        executable: String,
+        arguments: [String],
+        currentDirectory: URL?,
+        environment: [String: String]?
+    ) throws -> any LaunchedProcess {
+        if shouldThrow { throw CLIError("launch boom") }
+        launches.append(arguments)
+        let process = MockLaunchedProcess()
+        processes.append(process)
+        return process
+    }
+}
+
+private final class ManualFileWatcher: FileWatching {
+    private(set) var started = false
+    private(set) var stopped = false
+    private var handler: (() -> Void)?
+
+    func start(onChange: @escaping () -> Void) throws {
+        started = true
+        handler = onChange
+    }
+
+    func stop() { stopped = true }
+
+    /// テストから変更を手動発火する。
+    func fireChange() { handler?() }
+}
+
+// MARK: - Tests
+
+final class WatchSessionTests: XCTestCase {
+
+    private func makeSession(
+        runner: RecordingProcessRunner,
+        launcher: RecordingLauncher,
+        watcher: ManualFileWatcher,
+        console: BufferedConsole
+    ) -> WatchSession {
+        WatchSession(
+            directory: URL(fileURLWithPath: "/tmp/sketch"),
+            swiftArguments: [],
+            console: console,
+            processRunner: runner,
+            launcher: launcher,
+            watcher: watcher
+        )
+    }
+
+    func testInitialStartBuildsAndLaunches() throws {
+        let runner = RecordingProcessRunner()  // default exitCode 0
+        let launcher = RecordingLauncher()
+        let watcher = ManualFileWatcher()
+        let console = BufferedConsole()
+        let session = makeSession(runner: runner, launcher: launcher, watcher: watcher, console: console)
+
+        try session.start()
+
+        // 1 回 swift build を呼ぶ
+        XCTAssertEqual(runner.invocations.count, 1)
+        XCTAssertEqual(runner.invocations.first?.arguments, ["swift", "build"])
+        // 1 回 swift run --skip-build を起動
+        XCTAssertEqual(launcher.launches, [["swift", "run", "--skip-build"]])
+        // 監視を開始
+        XCTAssertTrue(watcher.started)
+    }
+
+    func testReloadTerminatesPreviousAndRelaunches() throws {
+        let runner = RecordingProcessRunner()
+        let launcher = RecordingLauncher()
+        let watcher = ManualFileWatcher()
+        let console = BufferedConsole()
+        let session = makeSession(runner: runner, launcher: launcher, watcher: watcher, console: console)
+
+        try session.start()
+        watcher.fireChange()
+
+        // 2 回起動（初回 + リロード）
+        XCTAssertEqual(launcher.processes.count, 2)
+        // 最初のプロセスは終了済み、2 番目は生存
+        XCTAssertTrue(launcher.processes[0].terminated)
+        XCTAssertFalse(launcher.processes[1].terminated)
+        // build は 2 回
+        XCTAssertEqual(runner.invocations.count, 2)
+    }
+
+    func testBuildFailureKeepsPreviousInstance() throws {
+        let runner = RecordingProcessRunner()
+        let launcher = RecordingLauncher()
+        let watcher = ManualFileWatcher()
+        let console = BufferedConsole()
+        let session = makeSession(runner: runner, launcher: launcher, watcher: watcher, console: console)
+
+        // 初回ビルド成功 → p0 起動
+        try session.start()
+        XCTAssertEqual(launcher.processes.count, 1)
+
+        // 次のビルドは失敗させる
+        runner.result = ProcessResult(exitCode: 1)
+        watcher.fireChange()
+
+        // 新規起動なし、前のプロセスは維持（terminate されない）
+        XCTAssertEqual(launcher.processes.count, 1)
+        XCTAssertFalse(launcher.processes[0].terminated)
+        XCTAssertTrue(console.errors.joined().contains("ビルド失敗"))
+    }
+
+    func testInitialBuildFailureLaunchesNothing() throws {
+        let runner = RecordingProcessRunner()
+        runner.result = ProcessResult(exitCode: 1)
+        let launcher = RecordingLauncher()
+        let watcher = ManualFileWatcher()
+        let console = BufferedConsole()
+        let session = makeSession(runner: runner, launcher: launcher, watcher: watcher, console: console)
+
+        try session.start()
+
+        XCTAssertEqual(launcher.launches.count, 0)
+        XCTAssertTrue(watcher.started)  // ビルドが失敗しても監視は続ける
+        XCTAssertTrue(console.errors.joined().contains("初回ビルド失敗"))
+    }
+
+    func testStopTerminatesProcessAndWatcher() throws {
+        let runner = RecordingProcessRunner()
+        let launcher = RecordingLauncher()
+        let watcher = ManualFileWatcher()
+        let console = BufferedConsole()
+        let session = makeSession(runner: runner, launcher: launcher, watcher: watcher, console: console)
+
+        try session.start()
+        session.stop()
+
+        XCTAssertTrue(watcher.stopped)
+        XCTAssertTrue(launcher.processes[0].terminated)
+    }
+
+    func testWatchCommandRejectsMissingPackage() {
+        let console = BufferedConsole()
+        let command = WatchCommand(
+            console: console,
+            processRunner: RecordingProcessRunner(),
+            currentDirectory: URL(fileURLWithPath: "/tmp/definitely-not-a-package-\(UUID().uuidString)")
+        )
+
+        XCTAssertThrowsError(try command.run(arguments: [])) { error in
+            guard let cliError = error as? CLIError else {
+                return XCTFail("expected CLIError, got \(error)")
+            }
+            XCTAssertEqual(cliError.exitCode, 2)
+            XCTAssertTrue(cliError.message.contains("Package.swift"))
+        }
+    }
+
+    func testWatchCommandHelp() throws {
+        let console = BufferedConsole()
+        let command = WatchCommand(
+            console: console,
+            processRunner: RecordingProcessRunner(),
+            currentDirectory: URL(fileURLWithPath: "/tmp")
+        )
+        try command.run(arguments: ["--help"])
+        XCTAssertTrue(console.output.joined().contains("metaphor watch"))
+    }
+}

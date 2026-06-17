@@ -43,6 +43,12 @@ public struct CommandLineTool {
                 processRunner: processRunner,
                 currentDirectory: currentDirectory
             ).run(arguments: commandArguments)
+        case "watch":
+            try WatchCommand(
+                console: console,
+                processRunner: processRunner,
+                currentDirectory: currentDirectory
+            ).run(arguments: commandArguments)
         case "doctor":
             try DoctorCommand(
                 console: console,
@@ -74,6 +80,7 @@ public struct CommandLineTool {
     Usage:
       metaphor new <name> [--template 2d] [--metaphor-version 0.2.3]
       metaphor run [swift-run-arguments...]
+      metaphor watch [swift-build/run-arguments...]
       metaphor update [check|self|library|all]
       metaphor doctor
       metaphor examples
@@ -82,6 +89,7 @@ public struct CommandLineTool {
     Commands:
       new       Create a new metaphor sketch package
       run       Run the current Swift package via `swift run`
+      watch     Rebuild and restart the sketch on source changes
       update    Check or apply metaphor CLI/library updates
       doctor    Check local Swift/Xcode/package setup
       examples  List available project templates
@@ -278,7 +286,7 @@ public struct RunCommand {
         }
 
         if arguments.contains("--watch") {
-            throw CLIError("metaphor run --watch is planned, but this initial CLI implements plain `metaphor run` first.")
+            throw CLIError("`metaphor run --watch` は `metaphor watch` に移行しました。`metaphor watch` を使ってください。", exitCode: 2)
         }
 
         let result = try processRunner.run(
