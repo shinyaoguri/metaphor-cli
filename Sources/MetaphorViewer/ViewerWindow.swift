@@ -17,6 +17,12 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
     private let window: NSWindow
     private let view: MTKView
 
+    /// 最後に受信したフレームを保持する自前テクスチャ（bgra8Unorm）。
+    /// Syphon テクスチャは rgba8Unorm ラベルだが中身は BGRA のため、bgra8Unorm に
+    /// blit コピーすることで色を正しく扱える。さらに子プロセス再起動中（サーバー不在）も
+    /// 直前のフレームを表示し続けられる（黒画面を防ぐ）。
+    private var held: MTLTexture?
+
     /// - Parameters:
     ///   - serverName: 接続する Syphon サーバー名（子プロセスの METAPHOR_SYPHON_NAME）。
     ///   - title: ウィンドウタイトル。
@@ -72,9 +78,14 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
     public func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
     public func draw(in view: MTKView) {
-        // サーバー未接続なら接続を試みる（子プロセスが後から起動するため）。
+        // サーバー未接続/無効（子プロセス再起動）なら接続し直す。
         if !source.isConnected {
             _ = source.connectIfAvailable()
+        }
+
+        // 最新フレームがあれば held にコピーして保持。
+        if let src = source.currentTexture() {
+            updateHeldTexture(from: src)
         }
 
         guard let drawable = view.currentDrawable,
@@ -84,7 +95,8 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
             return
         }
 
-        if let texture = source.currentTexture() {
+        // held（直前フレーム）を表示。再ビルド中も最後の画を出し続ける。
+        if let texture = held {
             let fit = aspectFitRect(
                 drawableWidth: Double(view.drawableSize.width),
                 drawableHeight: Double(view.drawableSize.height),
@@ -100,11 +112,38 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
             encoder.setFragmentTexture(texture, index: 0)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         }
-        // テクスチャ無しのときはクリアのみ（前フレームは drawable のため残らないが、
-        // サーバー切替時の黒画面は許容範囲）。
 
         encoder.endEncoding()
         commandBuffer.present(drawable)
+        commandBuffer.commit()
+    }
+
+    /// Syphon の最新テクスチャを held（bgra8Unorm, private）へ blit コピーする。
+    /// サイズが変わったら held を作り直す。
+    private func updateHeldTexture(from src: MTLTexture) {
+        if held?.width != src.width || held?.height != src.height {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: .bgra8Unorm, width: src.width, height: src.height, mipmapped: false
+            )
+            descriptor.usage = [.shaderRead]
+            descriptor.storageMode = .private
+            held = device.makeTexture(descriptor: descriptor)
+        }
+        guard let held,
+              let commandBuffer = commandQueue.makeCommandBuffer(),
+              let blit = commandBuffer.makeBlitCommandEncoder() else {
+            return
+        }
+        blit.copy(
+            from: src,
+            sourceSlice: 0, sourceLevel: 0,
+            sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+            sourceSize: MTLSize(width: src.width, height: src.height, depth: 1),
+            to: held,
+            destinationSlice: 0, destinationLevel: 0,
+            destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0)
+        )
+        blit.endEncoding()
         commandBuffer.commit()
     }
 
