@@ -38,16 +38,17 @@ public func runViewerWatch(
         ]
     )
 
-    guard let viewer = ViewerWindow(
-        serverName: syphonName,
-        title: "metaphor watch — \(directory.lastPathComponent)"
-    ) else {
-        throw CLIError("ビューア窓を作成できませんでした", exitCode: 1)
-    }
-
+    // ウィンドウ/MTKView は applicationDidFinishLaunching の中で作る（CLI ツールから
+    // GUI を使う場合の正準パターン。アプリ起動前に窓を作ると WindowServer が Metal
+    // レイヤーを合成せず中身が黒くなることがある）。
     let app = NSApplication.shared
     app.setActivationPolicy(.regular)
-    let delegate = ViewerWatchDelegate(viewer: viewer, session: session, console: console)
+    let delegate = ViewerWatchDelegate(
+        syphonName: syphonName,
+        title: "metaphor watch — \(directory.lastPathComponent)",
+        session: session,
+        console: console
+    )
     app.delegate = delegate
 
     installViewerSignalHandlers(session: session, console: console)
@@ -56,19 +57,30 @@ public func runViewerWatch(
 
 /// ライブビューア + watch supervisor を束ねるアプリデリゲート。
 private final class ViewerWatchDelegate: NSObject, NSApplicationDelegate {
-    private let viewer: ViewerWindow
+    private let syphonName: String
+    private let title: String
     private let session: WatchSession
     private let console: any Console
+    private var viewer: ViewerWindow?
 
-    init(viewer: ViewerWindow, session: WatchSession, console: any Console) {
-        self.viewer = viewer
+    init(syphonName: String, title: String, session: WatchSession, console: any Console) {
+        self.syphonName = syphonName
+        self.title = title
         self.session = session
         self.console = console
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // 窓は即表示。初回ビルド+起動と監視はバックグラウンドで（UI を止めない）。
+        // アプリ完全起動後にウィンドウ/MTKView を生成して表示。
+        guard let viewer = ViewerWindow(serverName: syphonName, title: title) else {
+            console.writeError("error: ビューア窓を作成できませんでした")
+            NSApp.terminate(nil)
+            return
+        }
+        self.viewer = viewer
         viewer.show()
+
+        // 初回ビルド+起動と監視はバックグラウンドで（UI を止めない）。
         let session = self.session
         let console = self.console
         DispatchQueue.global(qos: .userInitiated).async {
