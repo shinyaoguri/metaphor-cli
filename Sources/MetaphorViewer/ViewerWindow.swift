@@ -6,7 +6,7 @@ import MetaphorCLICore
 /// 名前付き Syphon サーバーのフレームをウィンドウに表示するライブビューア。
 ///
 /// `MTKView` に Syphon の最新テクスチャをアスペクト比保持（レターボックス）で
-/// blit する。フレームは ``SyphonFrameSource`` から取得し、metaphor が flipped:true で
+/// 表示する。フレームは ``SyphonFrameSource`` から取得し、metaphor が flipped:true で
 /// publish するため、サンプリング時に上下反転する。
 public final class ViewerWindow: NSObject, MTKViewDelegate {
     private let device: MTLDevice
@@ -83,44 +83,48 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
             _ = source.connectIfAvailable()
         }
 
-        // 最新フレームがあれば held にコピーして保持。
-        if let src = source.currentTexture() {
-            updateHeldTexture(from: src)
-        }
-
-        guard let drawable = view.currentDrawable,
-              let descriptor = view.currentRenderPassDescriptor,
-              let commandBuffer = commandQueue.makeCommandBuffer(),
-              let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) else {
+        guard let descriptor = view.currentRenderPassDescriptor,
+              let drawable = view.currentDrawable,
+              let commandBuffer = commandQueue.makeCommandBuffer() else {
             return
         }
 
-        // held（直前フレーム）を表示。再ビルド中も最後の画を出し続ける。
-        if let texture = held {
-            let fit = aspectFitRect(
-                drawableWidth: Double(view.drawableSize.width),
-                drawableHeight: Double(view.drawableSize.height),
-                contentWidth: texture.width,
-                contentHeight: texture.height
-            )
-            encoder.setViewport(MTLViewport(
-                originX: fit.x, originY: fit.y,
-                width: fit.width, height: fit.height,
-                znear: 0, zfar: 1
-            ))
-            encoder.setRenderPipelineState(pipeline)
-            encoder.setFragmentTexture(texture, index: 0)
-            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        // 最新フレームを held に取り込む。blit と描画を同一コマンドバッファに入れることで、
+        // Metal のハザード追跡が描画前に blit 完了を保証する（別バッファだと未同期で
+        // 黒画面になりうる）。
+        if let src = source.currentTexture() {
+            encodeHeldUpdate(from: src, in: commandBuffer)
         }
 
-        encoder.endEncoding()
+        if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) {
+            // held（直前フレーム）を表示。再ビルド中も最後の画を出し続ける。
+            if let texture = held {
+                let fit = aspectFitRect(
+                    drawableWidth: Double(view.drawableSize.width),
+                    drawableHeight: Double(view.drawableSize.height),
+                    contentWidth: texture.width,
+                    contentHeight: texture.height
+                )
+                encoder.setViewport(MTLViewport(
+                    originX: fit.x, originY: fit.y,
+                    width: fit.width, height: fit.height,
+                    znear: 0, zfar: 1
+                ))
+                encoder.setRenderPipelineState(pipeline)
+                encoder.setFragmentTexture(texture, index: 0)
+                encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            }
+            encoder.endEncoding()
+        }
+
         commandBuffer.present(drawable)
         commandBuffer.commit()
     }
 
-    /// Syphon の最新テクスチャを held（bgra8Unorm, private）へ blit コピーする。
-    /// サイズが変わったら held を作り直す。
-    private func updateHeldTexture(from src: MTLTexture) {
+    /// Syphon の最新テクスチャを held（bgra8Unorm, private）へ blit する。
+    /// サイズが変わったら held を作り直す。blit は呼び出し側のコマンドバッファに
+    /// エンコードする（描画と同一バッファにするため）。
+    private func encodeHeldUpdate(from src: MTLTexture, in commandBuffer: MTLCommandBuffer) {
         if held?.width != src.width || held?.height != src.height {
             let descriptor = MTLTextureDescriptor.texture2DDescriptor(
                 pixelFormat: .bgra8Unorm, width: src.width, height: src.height, mipmapped: false
@@ -129,11 +133,7 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
             descriptor.storageMode = .private
             held = device.makeTexture(descriptor: descriptor)
         }
-        guard let held,
-              let commandBuffer = commandQueue.makeCommandBuffer(),
-              let blit = commandBuffer.makeBlitCommandEncoder() else {
-            return
-        }
+        guard let held, let blit = commandBuffer.makeBlitCommandEncoder() else { return }
         blit.copy(
             from: src,
             sourceSlice: 0, sourceLevel: 0,
@@ -144,12 +144,11 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
             destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0)
         )
         blit.endEncoding()
-        commandBuffer.commit()
     }
 
     // MARK: - Helpers
 
-    /// フルスクリーン三角形で Syphon テクスチャをサンプルする blit パイプライン。
+    /// フルスクリーン三角形で held テクスチャをサンプルする blit パイプライン。
     /// Syphon フレームは上下反転しているため UV の V を反転する。
     private static func makeBlitPipeline(device: MTLDevice) -> MTLRenderPipelineState? {
         let source = """
