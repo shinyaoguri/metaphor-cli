@@ -15,18 +15,24 @@ public final class SyphonFrameSource {
     /// 新フレーム到着時に呼ばれる（Syphon の別スレッドから呼ばれうる）。
     public var onFrame: (() -> Void)?
 
-    /// サーバーへ接続済みかどうか。
-    public var isConnected: Bool { client != nil }
+    /// サーバーへ接続済みかつ有効かどうか。子プロセス再起動でサーバーが retire すると
+    /// `isValid` が false になるため、これを接続判定に使う。
+    public var isConnected: Bool { client?.isValid == true }
 
     public init(device: MTLDevice, serverName: String) {
         self.device = device
         self.serverName = serverName
     }
 
-    /// サーバーを探して接続する。見つかれば `true`。
+    /// サーバーを探して接続する。既存クライアントが無効（サーバー retire）なら破棄して
+    /// 同名の新サーバーに接続し直す。見つかれば `true`。
     @discardableResult
     public func connectIfAvailable() -> Bool {
-        guard client == nil else { return true }
+        if let existing = client {
+            if existing.isValid { return true }
+            existing.stop()
+            client = nil
+        }
         guard let description = matchingServerDescription() else { return false }
 
         client = SyphonMetalClient(
@@ -37,7 +43,7 @@ public final class SyphonFrameSource {
                 self?.onFrame?()
             }
         )
-        return client != nil
+        return client?.isValid == true
     }
 
     /// 最新フレームのテクスチャ（無ければ nil）。呼ぶたびに最新を取得する。

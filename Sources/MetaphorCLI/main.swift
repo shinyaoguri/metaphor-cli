@@ -15,9 +15,36 @@ enum MetaphorCLIEntryPoint {
             return
         }
 
+        // `metaphor watch --viewer`: 常設ライブビューア窓 + 子だけ差し替え。
+        // Syphon/AppKit を要するためここ（実行ファイル側）で処理する。
+        if arguments.first == "watch", arguments.contains("--viewer") {
+            runWatchViewer(Array(arguments.dropFirst()))
+            return
+        }
+
         let tool = CommandLineTool()
         do {
             try tool.run(arguments: arguments)
+        } catch let error as CLIError {
+            StandardConsole().writeError("error: \(error.message)")
+            exit(error.exitCode)
+        } catch {
+            StandardConsole().writeError("error: \(error)")
+            exit(1)
+        }
+    }
+
+    /// `metaphor watch --viewer` を処理する。`watch` の引数から `--viewer` を除いて
+    /// swift ビルド/実行引数として渡す。
+    private static func runWatchViewer(_ watchArguments: [String]) {
+        let swiftArguments = watchArguments.filter { $0 != "--viewer" }
+        let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        do {
+            try runViewerWatch(
+                directory: directory,
+                swiftArguments: swiftArguments,
+                console: StandardConsole()
+            )
         } catch let error as CLIError {
             StandardConsole().writeError("error: \(error.message)")
             exit(error.exitCode)

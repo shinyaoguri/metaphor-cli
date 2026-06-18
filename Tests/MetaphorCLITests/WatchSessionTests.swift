@@ -12,6 +12,8 @@ private final class MockLaunchedProcess: LaunchedProcess {
 
 private final class RecordingLauncher: ProcessLaunching {
     private(set) var launches: [[String]] = []
+    private(set) var executables: [String] = []
+    private(set) var environments: [[String: String]?] = []
     private(set) var processes: [MockLaunchedProcess] = []
     var shouldThrow = false
 
@@ -23,6 +25,8 @@ private final class RecordingLauncher: ProcessLaunching {
     ) throws -> any LaunchedProcess {
         if shouldThrow { throw CLIError("launch boom") }
         launches.append(arguments)
+        executables.append(executable)
+        environments.append(environment)
         let process = MockLaunchedProcess()
         processes.append(process)
         return process
@@ -45,6 +49,17 @@ private final class ManualFileWatcher: FileWatching {
     func fireChange() { handler?() }
 }
 
+/// バイナリ解決を行わないスタブ（テストでは swift run フォールバックを使う）。
+private struct NullBinaryResolver: SketchBinaryResolving {
+    func resolve(directory: URL, swiftArguments: [String]) -> String? { nil }
+}
+
+/// 固定パスを返すバイナリ解決スタブ。
+private struct FixedBinaryResolver: SketchBinaryResolving {
+    let path: String
+    func resolve(directory: URL, swiftArguments: [String]) -> String? { path }
+}
+
 // MARK: - Tests
 
 final class WatchSessionTests: XCTestCase {
@@ -61,7 +76,8 @@ final class WatchSessionTests: XCTestCase {
             console: console,
             processRunner: runner,
             launcher: launcher,
-            watcher: watcher
+            watcher: watcher,
+            binaryResolver: NullBinaryResolver()
         )
     }
 
@@ -178,5 +194,49 @@ final class WatchSessionTests: XCTestCase {
         )
         try command.run(arguments: ["--help"])
         XCTAssertTrue(console.output.joined().contains("metaphor watch"))
+    }
+
+    func testLaunchesResolvedBinaryDirectly() throws {
+        let runner = RecordingProcessRunner()
+        let launcher = RecordingLauncher()
+        let watcher = ManualFileWatcher()
+        let console = BufferedConsole()
+        let binary = "/tmp/sketch/.build/debug/Sketch"
+        let session = WatchSession(
+            directory: URL(fileURLWithPath: "/tmp/sketch"),
+            swiftArguments: [],
+            console: console,
+            processRunner: runner,
+            launcher: launcher,
+            watcher: watcher,
+            binaryResolver: FixedBinaryResolver(path: binary)
+        )
+
+        try session.start()
+
+        // swift run ではなくビルド済みバイナリを直接起動する。
+        XCTAssertEqual(launcher.executables, [binary])
+        XCTAssertEqual(launcher.launches, [[]])
+    }
+
+    func testInjectsExtraEnvironmentOnLaunch() throws {
+        let runner = RecordingProcessRunner()
+        let launcher = RecordingLauncher()
+        let watcher = ManualFileWatcher()
+        let console = BufferedConsole()
+        let session = WatchSession(
+            directory: URL(fileURLWithPath: "/tmp/sketch"),
+            swiftArguments: [],
+            console: console,
+            processRunner: runner,
+            launcher: launcher,
+            watcher: watcher,
+            binaryResolver: NullBinaryResolver(),
+            extraEnvironment: ["METAPHOR_VIEWER": "1", "METAPHOR_SYPHON_NAME": "abc"]
+        )
+
+        try session.start()
+
+        XCTAssertEqual(launcher.environments.first ?? nil, ["METAPHOR_VIEWER": "1", "METAPHOR_SYPHON_NAME": "abc"])
     }
 }

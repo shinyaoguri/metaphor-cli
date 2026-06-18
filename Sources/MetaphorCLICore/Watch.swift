@@ -161,8 +161,12 @@ public final class WatchSession {
     private let processRunner: any ProcessRunning
     private let launcher: any ProcessLaunching
     private let watcher: any FileWatching
+    private let binaryResolver: any SketchBinaryResolving
+    private let extraEnvironment: [String: String]?
 
     private var current: (any LaunchedProcess)?
+    /// 解決済みの実行ファイルパス（初回解決後にキャッシュ）。
+    private var resolvedBinary: String?
 
     public init(
         directory: URL,
@@ -170,7 +174,9 @@ public final class WatchSession {
         console: any Console,
         processRunner: any ProcessRunning,
         launcher: any ProcessLaunching,
-        watcher: any FileWatching
+        watcher: any FileWatching,
+        binaryResolver: any SketchBinaryResolving = SwiftPMBinaryResolver(),
+        extraEnvironment: [String: String]? = nil
     ) {
         self.directory = directory
         self.swiftArguments = swiftArguments
@@ -178,6 +184,8 @@ public final class WatchSession {
         self.processRunner = processRunner
         self.launcher = launcher
         self.watcher = watcher
+        self.binaryResolver = binaryResolver
+        self.extraEnvironment = extraEnvironment
     }
 
     /// 初回ビルド+起動を行い、ファイル監視を開始する。
@@ -225,12 +233,28 @@ public final class WatchSession {
         current?.terminate()
         current = nil
 
+        // ビルド済みバイナリを直接起動する（swift run はロック競合時に fork して
+        // プロセスが二重化しうるため）。解決できなければ swift run にフォールバック。
+        if resolvedBinary == nil {
+            resolvedBinary = binaryResolver.resolve(directory: directory, swiftArguments: swiftArguments)
+        }
+
+        let executable: String
+        let arguments: [String]
+        if let binary = resolvedBinary {
+            executable = binary
+            arguments = []
+        } else {
+            executable = "/usr/bin/env"
+            arguments = ["swift", "run", "--skip-build"] + swiftArguments
+        }
+
         do {
             current = try launcher.launch(
-                executable: "/usr/bin/env",
-                arguments: ["swift", "run", "--skip-build"] + swiftArguments,
+                executable: executable,
+                arguments: arguments,
                 currentDirectory: directory,
-                environment: nil
+                environment: extraEnvironment
             )
             console.write(initial ? "[watch] 実行中" : "[watch] リロードしました")
         } catch {
@@ -263,14 +287,20 @@ public struct WatchCommand {
         if arguments.contains("--help") || arguments.contains("-h") {
             console.write("""
             Usage:
-              metaphor watch [swift-build/run-arguments...]
+              metaphor watch [--viewer] [swift-build/run-arguments...]
 
             ソース（Sources/**/*.swift, Package.swift）を監視し、変更のたびに
             再ビルドしてスケッチを再起動します。ビルドが失敗した場合は動作中の
             スケッチを維持します。Ctrl-C で停止します。
 
-            注: 現状はスケッチ自身のウィンドウを再起動します（再起動時にウィンドウが
-            一瞬閉じます）。ウィンドウを維持したままのライブビューアは今後追加予定です。
+            --viewer:
+              常設のライブビューア窓を開き、再ビルド時はスケッチ（子プロセス）だけを
+              差し替えます。ウィンドウは閉じず、再ビルド中は直前のフレームを表示し
+              続けます。Syphon 経由でフレームを受け取ります。
+              （マウス/キー入力の転送は今後のフェーズで追加予定）
+
+            --viewer なしの場合はスケッチ自身のウィンドウを再起動します
+            （再起動時にウィンドウが一瞬閉じます）。
             """)
             return
         }
