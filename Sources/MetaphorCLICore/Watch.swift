@@ -323,6 +323,13 @@ public final class WatchSession {
     }
 }
 
+/// `watch` の引数から、swift build/run へ渡すべきでないビューア制御フラグ
+/// （`--viewer` / `--no-viewer`）を取り除く。ビューア経路・`--no-viewer` 経路の双方で使い、
+/// これらのフラグが swift に漏れて `swift build --no-viewer` のように失敗するのを防ぐ。
+public func sketchSwiftArguments(from watchArguments: [String]) -> [String] {
+    watchArguments.filter { $0 != "--viewer" && $0 != "--no-viewer" }
+}
+
 // MARK: - Watch command (entry point + run loop)
 
 public struct WatchCommand {
@@ -347,20 +354,22 @@ public struct WatchCommand {
         if arguments.contains("--help") || arguments.contains("-h") {
             console.write("""
             Usage:
-              metaphor watch [--viewer] [swift-build/run-arguments...]
+              metaphor watch [--no-viewer] [swift-build/run-arguments...]
 
             ソース（Sources/**/*.swift, Package.swift）を監視し、変更のたびに
-            再ビルドしてスケッチを再起動します。ビルドが失敗した場合は動作中の
-            スケッチを維持します。Ctrl-C で停止します。
+            再ビルドします。ビルドが失敗した場合は動作中のスケッチを維持します。
+            Ctrl-C で停止します。
 
-            --viewer:
+            既定（ライブビューア）:
               常設のライブビューア窓を開き、再ビルド時はスケッチ（子プロセス）だけを
               差し替えます。ウィンドウは閉じず、再ビルド中は直前のフレームを表示し
-              続けます。Syphon 経由でフレームを受け取ります。
-              （マウス/キー入力の転送は今後のフェーズで追加予定）
+              続けます。マウス/キー入力はビューアからスケッチへ転送されます。
+              （スケッチは Syphon 経由のヘッドレスで動作。スケッチ側の設定は不要）
 
-            --viewer なしの場合はスケッチ自身のウィンドウを再起動します
-            （再起動時にウィンドウが一瞬閉じます）。
+            --no-viewer:
+              ビューアを使わず、スケッチ自身のウィンドウを再起動します
+              （再起動時にウィンドウが一瞬閉じます）。実際の窓そのままで確認したい、
+              Syphon を経由したくない、といった場合に使います。
             """)
             return
         }
@@ -370,9 +379,12 @@ public struct WatchCommand {
             throw CLIError("Package.swift が見つかりません (\(currentDirectory.path))。スケッチのディレクトリで実行してください。", exitCode: 2)
         }
 
+        // ビューア制御フラグは swift へ渡さない。
+        let swiftArguments = sketchSwiftArguments(from: arguments)
+
         let session = WatchSession(
             directory: currentDirectory,
-            swiftArguments: arguments,
+            swiftArguments: swiftArguments,
             console: console,
             processRunner: processRunner,
             launcher: FoundationProcessLauncher(),

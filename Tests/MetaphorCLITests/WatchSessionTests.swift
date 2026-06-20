@@ -101,6 +101,16 @@ final class WatchSessionTests: XCTestCase {
         XCTAssertTrue(watcher.started)
     }
 
+    func testSketchSwiftArgumentsStripsViewerFlags() {
+        XCTAssertEqual(sketchSwiftArguments(from: ["--no-viewer"]), [])
+        XCTAssertEqual(sketchSwiftArguments(from: ["--viewer"]), [])
+        XCTAssertEqual(
+            sketchSwiftArguments(from: ["--no-viewer", "-c", "release", "--viewer"]),
+            ["-c", "release"]
+        )
+        XCTAssertEqual(sketchSwiftArguments(from: ["-c", "release"]), ["-c", "release"])
+    }
+
     func testForwardInputGoesToCurrentChild() throws {
         let runner = RecordingProcessRunner()
         let launcher = RecordingLauncher()

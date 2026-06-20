@@ -80,7 +80,7 @@ public struct CommandLineTool {
     Usage:
       metaphor new <name> [--template 2d] [--metaphor-version 0.2.3]
       metaphor run [swift-run-arguments...]
-      metaphor watch [swift-build/run-arguments...]
+      metaphor watch [--no-viewer] [swift-build/run-arguments...]
       metaphor update [check|self|library|all]
       metaphor doctor
       metaphor examples
@@ -89,7 +89,7 @@ public struct CommandLineTool {
     Commands:
       new       Create a new metaphor sketch package
       run       Run the current Swift package via `swift run`
-      watch     Rebuild and restart the sketch on source changes
+      watch     Live-reload the sketch in a viewer window (--no-viewer for the sketch's own window)
       update    Check or apply metaphor CLI/library updates
       doctor    Check local Swift/Xcode/package setup
       examples  List available project templates
