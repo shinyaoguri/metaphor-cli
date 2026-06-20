@@ -80,7 +80,7 @@ public struct CommandLineTool {
     Usage:
       metaphor new <name> [--template 2d] [--metaphor-version 0.2.3]
       metaphor run [swift-run-arguments...]
-      metaphor watch [--no-viewer] [swift-build/run-arguments...]
+      metaphor watch [--no-viewer] [--syphon-name <name>] [swift-build/run-arguments...]
       metaphor update [check|self|library|all]
       metaphor doctor
       metaphor examples
