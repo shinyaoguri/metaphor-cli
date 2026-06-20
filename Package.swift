@@ -31,7 +31,12 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "MetaphorCLICore"
+            name: "MetaphorCLICore",
+            plugins: ["VersionStampPlugin"]
+        ),
+        .plugin(
+            name: "VersionStampPlugin",
+            capability: .buildTool()
         ),
         syphonTarget,
         .target(
