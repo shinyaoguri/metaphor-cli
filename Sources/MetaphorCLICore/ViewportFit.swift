@@ -47,15 +47,19 @@ public func aspectFitRect(
 ///
 /// 入力転送（ビューア上のマウス位置 → 子スケッチのキャンバス座標）で使う純粋関数。
 /// ``aspectFitRect`` でキャンバスが内接表示される矩形を求め、その中での相対位置を
-/// キャンバス解像度にスケールする。レターボックスの帯に外れた点は範囲内へクランプする
-/// （Processing と同様、マウスはキャンバス端で頭打ちになる）。
+/// キャンバス解像度にスケールする。
+///
+/// **クランプしない**：これはネイティブ metaphor 窓の `viewToTextureCoordinates` と
+/// 同じ挙動で、内接矩形の外（レターボックスの帯、ウィンドウ外へカーソルが出た瞬間）では
+/// 負値やキャンバス幅・高さを超える値を返す。窓でもビューアでもスケッチの `mouseX/mouseY`
+/// が同一に振る舞うようにするため、ここで頭打ちにはしない。
 ///
 /// - Parameters:
 ///   - viewX: ビュー上の x（左上原点・ポイント単位。バッキングスケールは不要）。
 ///   - viewYTopLeft: ビュー上の y（**左上原点**。AppKit の左下原点からは呼び出し側で反転しておく）。
 ///   - viewWidth/viewHeight: ビューのサイズ（ポイント単位）。
 ///   - contentWidth/contentHeight: キャンバス（Syphon テクスチャ）の解像度。
-/// - Returns: キャンバス座標 `(x, y)`（左上原点、`0...content` にクランプ済み）。
+/// - Returns: キャンバス座標 `(x, y)`（左上原点、範囲外あり得る）。
 public func canvasCoordinate(
     viewX: Double,
     viewYTopLeft: Double,
@@ -71,8 +75,5 @@ public func canvasCoordinate(
     guard fit.width > 0, fit.height > 0 else { return (0, 0) }
     let cx = (viewX - fit.x) / fit.width * Double(contentWidth)
     let cy = (viewYTopLeft - fit.y) / fit.height * Double(contentHeight)
-    return (
-        x: min(max(cx, 0), Double(contentWidth)),
-        y: min(max(cy, 0), Double(contentHeight))
-    )
+    return (x: cx, y: cy)
 }

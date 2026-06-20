@@ -58,8 +58,8 @@ final class ViewportFitTests: XCTestCase {
     }
 
     func testCanvasCoordinateAccountsForPillarbox() {
-        // 2:1 ビューに 16:9 を内接 → 左右に帯。帯の左端(x=0)はキャンバス左端(0)へクランプ、
-        // 内接矩形の中心はキャンバス中心へ。
+        // 2:1 ビューに 16:9 を内接 → 左右に帯。内接矩形の中心はキャンバス中心へ、
+        // 内接矩形の左端はキャンバス x=0。
         let fitX = (2000 - 1000.0 * 1280.0 / 720.0) / 2  // 内接矩形の左端
         let center = canvasCoordinate(
             viewX: 1000, viewYTopLeft: 500,
@@ -69,14 +69,6 @@ final class ViewportFitTests: XCTestCase {
         XCTAssertEqual(center.x, 640, accuracy: 0.001)
         XCTAssertEqual(center.y, 360, accuracy: 0.001)
 
-        // 帯の中（内接矩形より左）は 0 にクランプ。
-        let inBar = canvasCoordinate(
-            viewX: fitX / 2, viewYTopLeft: 500,
-            viewWidth: 2000, viewHeight: 1000,
-            contentWidth: 1280, contentHeight: 720
-        )
-        XCTAssertEqual(inBar.x, 0, accuracy: 0.001)
-
         // 内接矩形の左端はキャンバス x=0。
         let leftEdge = canvasCoordinate(
             viewX: fitX, viewYTopLeft: 500,
@@ -84,16 +76,32 @@ final class ViewportFitTests: XCTestCase {
             contentWidth: 1280, contentHeight: 720
         )
         XCTAssertEqual(leftEdge.x, 0, accuracy: 0.001)
+
+        // 帯の中（内接矩形より左）はクランプせず負値（ネイティブ窓と同じ）。
+        let inBar = canvasCoordinate(
+            viewX: fitX / 2, viewYTopLeft: 500,
+            viewWidth: 2000, viewHeight: 1000,
+            contentWidth: 1280, contentHeight: 720
+        )
+        XCTAssertLessThan(inBar.x, 0)
     }
 
-    func testCanvasCoordinateClampsBeyondContent() {
-        // ビュー右下を大きく超える点 → キャンバス右下にクランプ。
+    func testCanvasCoordinateDoesNotClampBeyondContent() {
+        // ビュー右下を超える点 → キャンバス範囲外（>幅, >高さ）。ネイティブ窓と同じく頭打ちしない。
         let c = canvasCoordinate(
-            viewX: 5000, viewYTopLeft: 5000,
+            viewX: 1600, viewYTopLeft: 900,
             viewWidth: 1600, viewHeight: 900,
             contentWidth: 1280, contentHeight: 720
         )
         XCTAssertEqual(c.x, 1280, accuracy: 0.001)
         XCTAssertEqual(c.y, 720, accuracy: 0.001)
+
+        let beyond = canvasCoordinate(
+            viewX: 2000, viewYTopLeft: 1000,
+            viewWidth: 1600, viewHeight: 900,
+            contentWidth: 1280, contentHeight: 720
+        )
+        XCTAssertGreaterThan(beyond.x, 1280)
+        XCTAssertGreaterThan(beyond.y, 720)
     }
 }

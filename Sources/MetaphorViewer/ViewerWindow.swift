@@ -155,12 +155,13 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
         return (Float(c.x), Float(c.y))
     }
 
-    /// metaphor のボタン番号（左=0, 右=1, その他は buttonNumber）。
+    /// metaphor のボタン番号（左=0, 右=1, その他=2）。ネイティブ窓 `MetaphorMTKView`
+    /// の `mouseButtonIndex` と一致させる。
     private func buttonIndex(_ event: NSEvent) -> Int {
         switch event.type {
         case .leftMouseDown, .leftMouseUp: return 0
         case .rightMouseDown, .rightMouseUp: return 1
-        default: return event.buttonNumber
+        default: return 2
         }
     }
 
