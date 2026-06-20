@@ -56,16 +56,25 @@ public final class SyphonFrameSource {
         client = nil
     }
 
-    /// `serverName` に一致するサーバー記述を返す。
+    /// 現在の接続を破棄して次回 connectIfAvailable で繋ぎ直す。
+    /// 接続済みなのにフレームが来ない（誤接続/取り残しサーバー）状態からの自己回復用。
+    public func reconnect() {
+        client?.stop()
+        client = nil
+    }
+
+    /// `serverName` に**完全一致**するサーバー記述だけを返す。
+    ///
+    /// フォールバック（最初に見つかったサーバー）は使わない。過去の実行で残った
+    /// 死んだ Syphon サーバー（ゾンビ）に接続してしまい、connected=true なのに
+    /// フレームが永久に来ない、という事故を防ぐため。全サーバーを走査して厳密一致のみ。
     private func matchingServerDescription() -> [String: Any]? {
         let directory = SyphonServerDirectory.shared()
-        let matches = directory.servers(matchingName: serverName, appName: nil)
-        // 名前一致を優先。無ければ最初のサーバー（名前未設定でも拾えるように）。
-        for server in matches {
+        for server in directory.servers {
             if let name = server[SyphonServerDescriptionNameKey] as? String, name == serverName {
                 return server
             }
         }
-        return matches.first
+        return nil
     }
 }

@@ -22,6 +22,9 @@ public func runViewerWatch(
         )
     }
 
+    // どのビルドが動いているか毎回表示（古いインストールの取り違え防止）。
+    console.write("[viewer] \(BuildInfo.fullIdentifier)")
+
     // このプロセス固有の Syphon 名（同一マシンで複数 watch しても衝突しない）。
     let syphonName = "metaphor-watch-\(ProcessInfo.processInfo.processIdentifier)"
 
