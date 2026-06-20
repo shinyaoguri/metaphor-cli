@@ -200,6 +200,9 @@ public final class WatchSession {
 
     /// 初回ビルド+起動を行い、ファイル監視を開始する。
     public func start() throws {
+        // どの CLI ビルドが動いているか毎回表示（古いインストールの取り違え防止）。
+        // スケッチ子プロセスは自分で `[metaphor] <版>` を出すので、ここは CLI 版のみ。
+        console.write("[watch] \(BuildInfo.cliIdentifier)")
         console.write("metaphor watch: \(directory.path)")
         console.write("[watch] Ctrl-C で停止")
         rebuildAndLaunch(initial: true)
