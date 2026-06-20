@@ -15,9 +15,13 @@ enum MetaphorCLIEntryPoint {
             return
         }
 
-        // `metaphor watch --viewer`: 常設ライブビューア窓 + 子だけ差し替え。
-        // Syphon/AppKit を要するためここ（実行ファイル側）で処理する。
-        if arguments.first == "watch", arguments.contains("--viewer") {
+        // `metaphor watch`: 既定で常設ライブビューア窓 + 子だけ差し替え（Syphon/AppKit を
+        // 要するためここ＝実行ファイル側で処理する）。`--no-viewer` でのみ従来の
+        // 「スケッチ自身の窓を再起動する」モード（CommandLineTool 側）に渡す。
+        // `--help`/`-h` は CommandLineTool 側の watch ヘルプ表示に流す。
+        if arguments.first == "watch",
+           !arguments.contains("--no-viewer"),
+           !arguments.contains("--help"), !arguments.contains("-h") {
             runWatchViewer(Array(arguments.dropFirst()))
             return
         }
@@ -34,10 +38,10 @@ enum MetaphorCLIEntryPoint {
         }
     }
 
-    /// `metaphor watch --viewer` を処理する。`watch` の引数から `--viewer` を除いて
-    /// swift ビルド/実行引数として渡す。
+    /// `metaphor watch`（既定のライブビューア）を処理する。`watch` の引数から
+    /// ビューア制御フラグ（`--viewer` / `--no-viewer`）を除いて swift ビルド/実行引数として渡す。
     private static func runWatchViewer(_ watchArguments: [String]) {
-        let swiftArguments = watchArguments.filter { $0 != "--viewer" }
+        let swiftArguments = sketchSwiftArguments(from: watchArguments)
         let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         do {
             try runViewerWatch(
