@@ -213,6 +213,11 @@ public final class WatchSession {
     /// 解決済みの実行ファイルパス（初回解決後にキャッシュ）。
     private var resolvedBinary: String?
 
+    /// 子スケッチを（再）起動したときに呼ばれる。ビューアが Syphon サーバーの
+    /// 差し替え（同名・別 UUID）に追従するための通知に使う。バックグラウンドキューから
+    /// 呼ばれうるので、受け手はメインスレッドへホップすること。
+    public var onChildLaunched: (() -> Void)?
+
     public init(
         directory: URL,
         swiftArguments: [String],
@@ -311,6 +316,7 @@ public final class WatchSession {
                 environment: extraEnvironment
             )
             console.write(initial ? "[watch] 実行中" : "[watch] リロードしました")
+            onChildLaunched?()  // ビューアに Syphon サーバーの差し替え追従を促す。
         } catch {
             console.writeError("[watch] 起動失敗: \(error)")
         }

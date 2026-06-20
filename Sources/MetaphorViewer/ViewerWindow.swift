@@ -87,6 +87,12 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
         installEventMonitor()
     }
 
+    /// 子スケッチが（再）起動したことを通知する。次に現れる別 UUID の同名サーバー
+    /// （＝再起動後の子）へ張り替える。メインスレッドから呼ぶこと。
+    public func notifyChildRelaunched() {
+        source.expectNewServer()
+    }
+
     // MARK: - Input capture
 
     /// このウィンドウ宛のマウス/キーイベントを捕捉し、キャンバス座標へ変換して送出する。
@@ -181,47 +187,27 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
     public func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
     private var statusFrames = 0
-    private var loggedConnected = false
     private var loggedFirstFrame = false
 
-    private var framesSinceConnect = 0
-
     public func draw(in view: MTKView) {
-        // サーバー未接続/無効（子プロセス再起動）なら接続し直す。
-        if !source.isConnected {
-            lastFrame = nil  // 旧サーバーのテクスチャは無効化（retire 済みを掴まない）
-            framesSinceConnect = 0
-            _ = source.connectIfAvailable()
-        }
+        // 接続・子プロセス差し替え（リロード）検知。``SyphonFrameSource`` が
+        // 同名・別 UUID の新サーバーへの張り替えまで面倒を見る。
+        source.poll()
 
-        // 最新フレーム（bgra8Unorm）。来ていなければ直前フレームを使う。
+        // 最新フレーム（bgra8Unorm）。来ていなければ直前フレームを使い続ける。
         if let frame = source.currentTexture() {
             lastFrame = frame
         }
 
-        // 接続済みなのに一定時間フレームが来なければ繋ぎ直す（誤接続/取り残しサーバー
-        // からの自己回復）。約2秒（120フレーム）でリセット。
-        if source.isConnected {
-            framesSinceConnect += 1
-            if lastFrame == nil && framesSinceConnect > 120 {
-                source.reconnect()
-                framesSinceConnect = 0
-            }
-        }
-
-        // 状態をターミナルに表示（接続・フレーム受信の有無を可視化）。
+        // 状態をターミナルに表示（最初のフレーム受信・待機を可視化）。
         statusFrames += 1
-        if source.isConnected && !loggedConnected {
-            loggedConnected = true
-            FileHandle.standardError.write("[viewer] Syphon サーバーに接続しました\n".data(using: .utf8)!)
-        }
         if lastFrame != nil && !loggedFirstFrame {
             loggedFirstFrame = true
             let s = lastFrame.map { "\($0.width)x\($0.height) fmt=\($0.pixelFormat.rawValue)" } ?? "?"
             FileHandle.standardError.write("[viewer] フレーム受信中 \(s)\n".data(using: .utf8)!)
         }
         if statusFrames % 180 == 0 && lastFrame == nil {
-            FileHandle.standardError.write("[viewer] スケッチの Syphon 出力を待機中…（connected=\(source.isConnected)）\n".data(using: .utf8)!)
+            FileHandle.standardError.write("[viewer] スケッチの Syphon 出力を待機中…\n".data(using: .utf8)!)
         }
 
         guard let drawable = view.currentDrawable,

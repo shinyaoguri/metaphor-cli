@@ -90,6 +90,12 @@ private final class ViewerWatchDelegate: NSObject, NSApplicationDelegate {
             session?.forwardInput(line)
         }
 
+        // 子の（再）起動時に、ビューアを新しい Syphon サーバー（同名・別 UUID）へ
+        // 張り替えさせる。コールバックはバックグラウンドキューから来るのでメインへホップ。
+        session.onChildLaunched = { [weak viewer] in
+            DispatchQueue.main.async { viewer?.notifyChildRelaunched() }
+        }
+
         viewer.show()
 
         // 初回ビルド+起動と監視はバックグラウンドで（UI を止めない）。
