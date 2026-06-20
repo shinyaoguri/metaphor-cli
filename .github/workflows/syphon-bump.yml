@@ -1,0 +1,75 @@
+name: Bump Syphon pin
+
+# Triggered by metaphor's release workflow via repository_dispatch when a stable
+# release rebuilds Syphon.xcframework. Updates the binaryTarget URL + checksum in
+# Package.swift and opens a PR. See CONTRACT.md (L2a).
+on:
+  repository_dispatch:
+    types: [syphon-release]
+  # Allow manual runs for backfilling/testing: provide tag (and optionally
+  # checksum; it is re-derived from the published asset regardless).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'metaphor release tag (e.g. v0.3.0)'
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Resolve tag and checksum
+        id: resolve
+        env:
+          DISPATCH_TAG: ${{ github.event.client_payload.tag }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -euo pipefail
+          TAG="${DISPATCH_TAG:-${INPUT_TAG:-}}"
+          if [ -z "$TAG" ]; then
+            echo "::error::No tag provided (client_payload.tag / inputs.tag)."
+            exit 1
+          fi
+          URL="https://github.com/shinyaoguri/metaphor/releases/download/${TAG}/Syphon.xcframework.zip"
+          # Re-derive the checksum from the actually-published asset rather than
+          # trusting the dispatched value — the PR must carry a buildable pin.
+          curl -fsSL "$URL" -o syphon.zip
+          CHECKSUM=$(sha256sum syphon.zip | awk '{print $1}')
+          rm -f syphon.zip
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
+          echo "Resolved $TAG -> $CHECKSUM"
+
+      - name: Update Package.swift pin
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          CHECKSUM: ${{ steps.resolve.outputs.checksum }}
+        run: |
+          set -euo pipefail
+          sed -i "s|releases/download/v[^/]*/|releases/download/${TAG}/|g" Package.swift
+          sed -i "s|checksum: \"[^\"]*\"|checksum: \"${CHECKSUM}\"|g" Package.swift
+          echo "--- Package.swift (Syphon pin) ---"
+          grep -nE "releases/download|checksum:" Package.swift
+
+      - name: Open pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: chore/bump-syphon-${{ steps.resolve.outputs.tag }}
+          base: main
+          title: "chore: bump Syphon.xcframework pin to ${{ steps.resolve.outputs.tag }}"
+          commit-message: "chore: bump Syphon.xcframework pin to ${{ steps.resolve.outputs.tag }}"
+          body: |
+            Automated by `syphon-bump.yml` in response to metaphor release
+            **${{ steps.resolve.outputs.tag }}** (see CONTRACT.md, L2a).
+
+            - URL: `releases/download/${{ steps.resolve.outputs.tag }}/Syphon.xcframework.zip`
+            - checksum (re-derived from the published asset): `${{ steps.resolve.outputs.checksum }}`
+
+            Review and merge to consume the new Syphon build.
+          delete-branch: true
