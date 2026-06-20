@@ -16,6 +16,8 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v6
+      - name: Check cross-repo contract
+        run: ./scripts/check-contract.sh
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_26.4.app
       - name: Build
