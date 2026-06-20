@@ -38,15 +38,16 @@ enum MetaphorCLIEntryPoint {
         }
     }
 
-    /// `metaphor watch`（既定のライブビューア）を処理する。`watch` の引数から
-    /// ビューア制御フラグ（`--viewer` / `--no-viewer`）を除いて swift ビルド/実行引数として渡す。
+    /// `metaphor watch`（既定のライブビューア）を処理する。`watch` 専用フラグ
+    /// （`--viewer` / `--no-viewer` / `--syphon-name <name>`）を解釈し、残りを swift 引数として渡す。
     private static func runWatchViewer(_ watchArguments: [String]) {
-        let swiftArguments = sketchSwiftArguments(from: watchArguments)
+        let parsed = parseWatchArguments(watchArguments)
         let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         do {
             try runViewerWatch(
                 directory: directory,
-                swiftArguments: swiftArguments,
+                swiftArguments: parsed.swiftArguments,
+                syphonName: parsed.syphonName,
                 console: StandardConsole()
             )
         } catch let error as CLIError {

@@ -12,6 +12,7 @@ import MetaphorCLICore
 public func runViewerWatch(
     directory: URL,
     swiftArguments: [String],
+    syphonName requestedSyphonName: String? = nil,
     console: any Console
 ) throws {
     let package = directory.appendingPathComponent("Package.swift")
@@ -28,8 +29,9 @@ public func runViewerWatch(
     // ビューアが死なないようにする。
     installSIGPIPEIgnore()
 
-    // このプロセス固有の Syphon 名（同一マシンで複数 watch しても衝突しない）。
-    let syphonName = "metaphor-watch-\(ProcessInfo.processInfo.processIdentifier)"
+    // Syphon 名: --syphon-name 指定があればそれ（MadMapper 等へ安定名で送れる）。
+    // 無ければ watch プロセス固有名（同一マシンで複数 watch しても衝突しない）。
+    let syphonName = requestedSyphonName ?? "metaphor-watch-\(ProcessInfo.processInfo.processIdentifier)"
 
     let session = WatchSession(
         directory: directory,

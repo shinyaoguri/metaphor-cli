@@ -323,11 +323,50 @@ public final class WatchSession {
     }
 }
 
-/// `watch` の引数から、swift build/run へ渡すべきでないビューア制御フラグ
-/// （`--viewer` / `--no-viewer`）を取り除く。ビューア経路・`--no-viewer` 経路の双方で使い、
-/// これらのフラグが swift に漏れて `swift build --no-viewer` のように失敗するのを防ぐ。
-public func sketchSwiftArguments(from watchArguments: [String]) -> [String] {
-    watchArguments.filter { $0 != "--viewer" && $0 != "--no-viewer" }
+/// `metaphor watch` 専用フラグを解釈した結果。
+public struct ParsedWatchArguments: Equatable {
+    /// `--syphon-name <name>` で指定された Syphon サーバー名（未指定なら nil）。
+    public let syphonName: String?
+    /// `watch` 専用フラグを除いた、swift build/run へ渡す引数。
+    public let swiftArguments: [String]
+
+    public init(syphonName: String?, swiftArguments: [String]) {
+        self.syphonName = syphonName
+        self.swiftArguments = swiftArguments
+    }
+}
+
+/// `watch` の引数から `metaphor watch` 専用フラグを取り出し、残りを swift へ渡す引数として返す。
+///
+/// 取り除く専用フラグ:
+/// - `--viewer` / `--no-viewer`（ビューア制御。`swift build --no-viewer` のような誤渡しを防ぐ）
+/// - `--syphon-name <name>` / `--syphon-name=<name>`（Syphon サーバー名の指定。値ごと除去）
+public func parseWatchArguments(_ args: [String]) -> ParsedWatchArguments {
+    var syphonName: String?
+    var swift: [String] = []
+    let prefix = "--syphon-name="
+    var i = 0
+    while i < args.count {
+        let arg = args[i]
+        switch true {
+        case arg == "--syphon-name":
+            // 次のトークンを名前として取り込む（無ければ無視）。
+            if i + 1 < args.count {
+                syphonName = args[i + 1]
+                i += 1
+            }
+        case arg.hasPrefix(prefix):
+            syphonName = String(arg.dropFirst(prefix.count))
+        case arg == "--viewer", arg == "--no-viewer":
+            break  // 何もしない（除去）
+        default:
+            swift.append(arg)
+        }
+        i += 1
+    }
+    // 空文字の名前は無効として無視（`--syphon-name ""` 等）。
+    if let name = syphonName, name.isEmpty { syphonName = nil }
+    return ParsedWatchArguments(syphonName: syphonName, swiftArguments: swift)
 }
 
 // MARK: - Watch command (entry point + run loop)
@@ -370,6 +409,11 @@ public struct WatchCommand {
               ビューアを使わず、スケッチ自身のウィンドウを再起動します
               （再起動時にウィンドウが一瞬閉じます）。実際の窓そのままで確認したい、
               Syphon を経由したくない、といった場合に使います。
+
+            --syphon-name <name>:
+              既定（ビューア）モードで publish する Syphon サーバー名を固定します。
+              未指定だと watch プロセスごとに変わる名前（衝突しないが毎回変わる）に
+              なります。MadMapper 等へ安定した名前で送りたいときに使います。
             """)
             return
         }
@@ -379,16 +423,24 @@ public struct WatchCommand {
             throw CLIError("Package.swift が見つかりません (\(currentDirectory.path))。スケッチのディレクトリで実行してください。", exitCode: 2)
         }
 
-        // ビューア制御フラグは swift へ渡さない。
-        let swiftArguments = sketchSwiftArguments(from: arguments)
+        // watch 専用フラグ（ビューア制御・--syphon-name）は swift へ渡さない。
+        let parsed = parseWatchArguments(arguments)
+
+        // --no-viewer（このパス）でも、子へ Syphon 名を環境変数で渡しておく。実際に
+        // ウィンドウモードで publish するにはスケッチ側の Syphon 有効化が必要。
+        var environment: [String: String]?
+        if let name = parsed.syphonName {
+            environment = ["METAPHOR_SYPHON_NAME": name]
+        }
 
         let session = WatchSession(
             directory: currentDirectory,
-            swiftArguments: swiftArguments,
+            swiftArguments: parsed.swiftArguments,
             console: console,
             processRunner: processRunner,
             launcher: FoundationProcessLauncher(),
-            watcher: PollingFileWatcher(directory: currentDirectory)
+            watcher: PollingFileWatcher(directory: currentDirectory),
+            extraEnvironment: environment
         )
 
         try session.start()
