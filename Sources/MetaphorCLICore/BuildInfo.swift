@@ -27,4 +27,11 @@ public enum BuildInfo {
     public static var fullIdentifier: String {
         "\(name) \(version) (built \(buildStamp))"
     }
+
+    /// CLI であることを明示した1行表記（例: `metaphor-cli 0.1.0-dev (built ...)`）。
+    /// `watch` のバナーで使う。スケッチ子プロセスは別途 `[metaphor] <版>` を出すため、
+    /// CLI 版とライブラリ版がログ上で区別できるよう名前で曖昧さを消す。
+    public static var cliIdentifier: String {
+        "\(name)-cli \(version) (built \(buildStamp))"
+    }
 }
