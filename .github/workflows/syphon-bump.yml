@@ -4,14 +4,14 @@ name: Bump Syphon pin
 # latest stable release. See CONTRACT.md (L2a). Three triggers:
 #   - repository_dispatch (syphon-release): instant, fired by metaphor's release
 #     workflow. Requires CLI_DISPATCH_TOKEN on the metaphor side.
-#   - schedule: a daily poll so a missed/again-untokened dispatch still gets
-#     picked up — works with the repo's own GITHUB_TOKEN, no secret required.
+#   - schedule: a weekly poll so a missed/untokened dispatch still gets picked
+#     up — works with the repo's own GITHUB_TOKEN, no secret required.
 #   - workflow_dispatch: manual backfill.
 on:
   repository_dispatch:
     types: [syphon-release]
   schedule:
-    - cron: '17 6 * * *'   # daily 06:17 UTC
+    - cron: '17 6 * * 1'   # weekly, Mondays 06:17 UTC
   workflow_dispatch:
     inputs:
       tag:
