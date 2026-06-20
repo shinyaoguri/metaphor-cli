@@ -24,6 +24,10 @@ public func runViewerWatch(
 
     // CLI 版バナーは WatchSession.start() が出す（viewer/非 viewer 共通の単一箇所）。
 
+    // 終了した子の stdin（閉じたパイプ）へ入力転送を書き込んでも SIGPIPE で
+    // ビューアが死なないようにする。
+    installSIGPIPEIgnore()
+
     // このプロセス固有の Syphon 名（同一マシンで複数 watch しても衝突しない）。
     let syphonName = "metaphor-watch-\(ProcessInfo.processInfo.processIdentifier)"
 

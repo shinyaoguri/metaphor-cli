@@ -72,6 +72,13 @@ final class FoundationLaunchedProcess: LaunchedProcess {
     init(_ process: Process, stdinWrite: FileHandle) {
         self.process = process
         self.stdinWrite = stdinWrite
+        // 書き込みをノンブロッキングにする。再起動直後の子が stdin を読み始める前は
+        // パイプに空きが無くなりうるが、その際 sendLine が**メインスレッドでブロックして
+        // ビューアごと固まる**のを防ぐ（満杯ならそのイベントを捨てる）。
+        let flags = fcntl(stdinWrite.fileDescriptor, F_GETFL)
+        if flags != -1 {
+            _ = fcntl(stdinWrite.fileDescriptor, F_SETFL, flags | O_NONBLOCK)
+        }
     }
 
     var isRunning: Bool { process.isRunning }
@@ -85,13 +92,20 @@ final class FoundationLaunchedProcess: LaunchedProcess {
 
     func sendLine(_ line: String) {
         guard process.isRunning, let data = (line + "\n").data(using: .utf8) else { return }
-        // パイプが閉じている（子が終了直後など）と SIGPIPE/例外になりうるので握りつぶす。
-        do {
-            try stdinWrite.write(contentsOf: data)
-        } catch {
-            // 子が消えている瞬間の取りこぼしは無視（次フレームの再接続で回復）。
+        // ノンブロッキング書き込み。1 行は PIPE_BUF(512) 未満なので write はアトミック：
+        // 空きが足りなければ EAGAIN で即返るので、その行は捨てる（入力はロスト許容）。
+        // 子が消えていれば EPIPE。SIGPIPE はプロセス起動時に無視している（installSIGPIPEIgnore）。
+        data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+            guard let base = raw.baseAddress, raw.count > 0 else { return }
+            _ = Darwin.write(stdinWrite.fileDescriptor, base, raw.count)
         }
     }
+}
+
+/// 閉じたパイプ（終了した子の stdin）への書き込みで SIGPIPE に殺されないよう、
+/// プロセス全体で SIGPIPE を無視する。入力転送を行う前に一度だけ呼ぶ。
+public func installSIGPIPEIgnore() {
+    signal(SIGPIPE, SIG_IGN)
 }
 
 // MARK: - File watching
