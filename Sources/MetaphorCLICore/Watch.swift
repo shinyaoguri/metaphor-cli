@@ -10,6 +10,8 @@ public protocol LaunchedProcess: AnyObject {
     var isRunning: Bool { get }
     /// プロセスに終了を要求し、終了まで待つ。
     func terminate()
+    /// 子の stdin へ 1 行（末尾改行付き）書き込む。入力イベント（JSON Lines）の転送に使う。
+    func sendLine(_ line: String)
 }
 
 /// 子プロセスを**ブロックせずに**起動する抽象。テストで差し替え可能。
@@ -70,6 +72,13 @@ final class FoundationLaunchedProcess: LaunchedProcess {
     init(_ process: Process, stdinWrite: FileHandle) {
         self.process = process
         self.stdinWrite = stdinWrite
+        // 書き込みをノンブロッキングにする。再起動直後の子が stdin を読み始める前は
+        // パイプに空きが無くなりうるが、その際 sendLine が**メインスレッドでブロックして
+        // ビューアごと固まる**のを防ぐ（満杯ならそのイベントを捨てる）。
+        let flags = fcntl(stdinWrite.fileDescriptor, F_GETFL)
+        if flags != -1 {
+            _ = fcntl(stdinWrite.fileDescriptor, F_SETFL, flags | O_NONBLOCK)
+        }
     }
 
     var isRunning: Bool { process.isRunning }
@@ -80,6 +89,23 @@ final class FoundationLaunchedProcess: LaunchedProcess {
         process.waitUntilExit()
         try? stdinWrite.close()
     }
+
+    func sendLine(_ line: String) {
+        guard process.isRunning, let data = (line + "\n").data(using: .utf8) else { return }
+        // ノンブロッキング書き込み。1 行は PIPE_BUF(512) 未満なので write はアトミック：
+        // 空きが足りなければ EAGAIN で即返るので、その行は捨てる（入力はロスト許容）。
+        // 子が消えていれば EPIPE。SIGPIPE はプロセス起動時に無視している（installSIGPIPEIgnore）。
+        data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+            guard let base = raw.baseAddress, raw.count > 0 else { return }
+            _ = Darwin.write(stdinWrite.fileDescriptor, base, raw.count)
+        }
+    }
+}
+
+/// 閉じたパイプ（終了した子の stdin）への書き込みで SIGPIPE に殺されないよう、
+/// プロセス全体で SIGPIPE を無視する。入力転送を行う前に一度だけ呼ぶ。
+public func installSIGPIPEIgnore() {
+    signal(SIGPIPE, SIG_IGN)
 }
 
 // MARK: - File watching
@@ -174,9 +200,23 @@ public final class WatchSession {
     private let binaryResolver: any SketchBinaryResolving
     private let extraEnvironment: [String: String]?
 
-    private var current: (any LaunchedProcess)?
+    /// 動作中の子スケッチ。再ビルド（バックグラウンドキュー）から書き換わり、
+    /// 入力転送（メインスレッドの `forwardInput`）から読まれるため、頻発する
+    /// マウス移動でのデータ競合を避けるようロックで保護する。getter は強参照を
+    /// 返すので、読んだ直後に reload が走っても掴んだ子は有効なまま。
+    private let currentLock = NSLock()
+    private var _current: (any LaunchedProcess)?
+    private var current: (any LaunchedProcess)? {
+        get { currentLock.lock(); defer { currentLock.unlock() }; return _current }
+        set { currentLock.lock(); defer { currentLock.unlock() }; _current = newValue }
+    }
     /// 解決済みの実行ファイルパス（初回解決後にキャッシュ）。
     private var resolvedBinary: String?
+
+    /// 子スケッチを（再）起動したときに呼ばれる。ビューアが Syphon サーバーの
+    /// 差し替え（同名・別 UUID）に追従するための通知に使う。バックグラウンドキューから
+    /// 呼ばれうるので、受け手はメインスレッドへホップすること。
+    public var onChildLaunched: (() -> Void)?
 
     public init(
         directory: URL,
@@ -222,6 +262,12 @@ public final class WatchSession {
         watcher.stop()
         current?.terminate()
         current = nil
+    }
+
+    /// 入力イベント（JSON Lines 1 行）を現在動作中の子スケッチへ転送する。
+    /// 再ビルド中で子が居ない瞬間は黙って捨てる（次の子に引き継がない）。
+    public func forwardInput(_ line: String) {
+        current?.sendLine(line)
     }
 
     /// ビルドが通った場合のみ、前のスケッチを終了して新しく起動する。
@@ -270,6 +316,7 @@ public final class WatchSession {
                 environment: extraEnvironment
             )
             console.write(initial ? "[watch] 実行中" : "[watch] リロードしました")
+            onChildLaunched?()  // ビューアに Syphon サーバーの差し替え追従を促す。
         } catch {
             console.writeError("[watch] 起動失敗: \(error)")
         }

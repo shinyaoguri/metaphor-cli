@@ -26,6 +26,13 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
     /// そのままサンプルすれば色は正しい。
     private var lastFrame: MTLTexture?
 
+    /// キャプチャした入力イベント（JSON Lines 1 行）の送出先。
+    /// `ViewerWatch` が子スケッチの stdin へ転送するようつなぐ。未設定なら入力は捨てる。
+    public var onInput: ((String) -> Void)?
+
+    /// ローカル NSEvent モニタ（マウス/キー捕捉）。deinit で解除する。
+    private var eventMonitor: Any?
+
     /// - Parameters:
     ///   - serverName: 接続する Syphon サーバー名（子プロセスの METAPHOR_SYPHON_NAME）。
     ///   - title: ウィンドウタイトル。
@@ -77,6 +84,102 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
     public func show() {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        installEventMonitor()
+    }
+
+    /// 子スケッチが（再）起動したことを通知する。次に現れる別 UUID の同名サーバー
+    /// （＝再起動後の子）へ張り替える。メインスレッドから呼ぶこと。
+    public func notifyChildRelaunched() {
+        source.expectNewServer()
+    }
+
+    // MARK: - Input capture
+
+    /// このウィンドウ宛のマウス/キーイベントを捕捉し、キャンバス座標へ変換して送出する。
+    private func installEventMonitor() {
+        guard eventMonitor == nil else { return }
+        // ドラッグ無しのマウス移動も取るためウィンドウに mouseMoved を有効化。
+        window.acceptsMouseMovedEvents = true
+
+        let mask: NSEvent.EventTypeMask = [
+            .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp,
+            .otherMouseDown, .otherMouseUp,
+            .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged,
+            .scrollWheel, .keyDown, .keyUp,
+        ]
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+            self?.handle(event)
+            return event  // イベントは通常どおり伝播させる（ビューア窓のUI操作を妨げない）。
+        }
+    }
+
+    /// 捕捉した NSEvent を JSON Lines に変換して ``onInput`` へ流す。
+    private func handle(_ event: NSEvent) {
+        // 自ウィンドウ宛のイベントのみ扱う（他ウィンドウ/メニュー操作は無視）。
+        guard event.window === window, let onInput else { return }
+
+        switch event.type {
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+            if let p = canvasPoint(for: event) {
+                emit(OutEvent(t: "mouseDown", x: p.x, y: p.y, button: buttonIndex(event)), via: onInput)
+            }
+        case .leftMouseUp, .rightMouseUp, .otherMouseUp:
+            if let p = canvasPoint(for: event) {
+                emit(OutEvent(t: "mouseUp", x: p.x, y: p.y, button: buttonIndex(event)), via: onInput)
+            }
+        case .mouseMoved:
+            if let p = canvasPoint(for: event) {
+                emit(OutEvent(t: "mouseMove", x: p.x, y: p.y), via: onInput)
+            }
+        case .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
+            if let p = canvasPoint(for: event) {
+                emit(OutEvent(t: "mouseDrag", x: p.x, y: p.y), via: onInput)
+            }
+        case .scrollWheel:
+            emit(OutEvent(t: "scroll", dx: Float(event.scrollingDeltaX), dy: Float(event.scrollingDeltaY)), via: onInput)
+        case .keyDown:
+            emit(OutEvent(t: "keyDown", code: event.keyCode, chars: event.characters, repeat: event.isARepeat), via: onInput)
+        case .keyUp:
+            emit(OutEvent(t: "keyUp", code: event.keyCode), via: onInput)
+        default:
+            break
+        }
+    }
+
+    /// マウスイベントのウィンドウ座標をキャンバス座標へ逆変換する。
+    /// フレーム未受信（キャンバス解像度不明）の間は nil を返して捨てる。
+    private func canvasPoint(for event: NSEvent) -> (x: Float, y: Float)? {
+        guard let texture = lastFrame else { return nil }
+        // ウィンドウ座標 → ビュー座標（左下原点）→ 左上原点へ反転。
+        let inView = view.convert(event.locationInWindow, from: nil)
+        let yTopLeft = Double(view.bounds.height) - Double(inView.y)
+        let c = canvasCoordinate(
+            viewX: Double(inView.x), viewYTopLeft: yTopLeft,
+            viewWidth: Double(view.bounds.width), viewHeight: Double(view.bounds.height),
+            contentWidth: texture.width, contentHeight: texture.height
+        )
+        return (Float(c.x), Float(c.y))
+    }
+
+    /// metaphor のボタン番号（左=0, 右=1, その他=2）。ネイティブ窓 `MetaphorMTKView`
+    /// の `mouseButtonIndex` と一致させる。
+    private func buttonIndex(_ event: NSEvent) -> Int {
+        switch event.type {
+        case .leftMouseDown, .leftMouseUp: return 0
+        case .rightMouseDown, .rightMouseUp: return 1
+        default: return 2
+        }
+    }
+
+    private func emit(_ event: OutEvent, via sink: (String) -> Void) {
+        guard let line = event.jsonLine() else { return }
+        sink(line)
+    }
+
+    deinit {
+        if let eventMonitor {
+            NSEvent.removeMonitor(eventMonitor)
+        }
     }
 
     // MARK: - MTKViewDelegate
@@ -84,47 +187,27 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
     public func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
     private var statusFrames = 0
-    private var loggedConnected = false
     private var loggedFirstFrame = false
 
-    private var framesSinceConnect = 0
-
     public func draw(in view: MTKView) {
-        // サーバー未接続/無効（子プロセス再起動）なら接続し直す。
-        if !source.isConnected {
-            lastFrame = nil  // 旧サーバーのテクスチャは無効化（retire 済みを掴まない）
-            framesSinceConnect = 0
-            _ = source.connectIfAvailable()
-        }
+        // 接続・子プロセス差し替え（リロード）検知。``SyphonFrameSource`` が
+        // 同名・別 UUID の新サーバーへの張り替えまで面倒を見る。
+        source.poll()
 
-        // 最新フレーム（bgra8Unorm）。来ていなければ直前フレームを使う。
+        // 最新フレーム（bgra8Unorm）。来ていなければ直前フレームを使い続ける。
         if let frame = source.currentTexture() {
             lastFrame = frame
         }
 
-        // 接続済みなのに一定時間フレームが来なければ繋ぎ直す（誤接続/取り残しサーバー
-        // からの自己回復）。約2秒（120フレーム）でリセット。
-        if source.isConnected {
-            framesSinceConnect += 1
-            if lastFrame == nil && framesSinceConnect > 120 {
-                source.reconnect()
-                framesSinceConnect = 0
-            }
-        }
-
-        // 状態をターミナルに表示（接続・フレーム受信の有無を可視化）。
+        // 状態をターミナルに表示（最初のフレーム受信・待機を可視化）。
         statusFrames += 1
-        if source.isConnected && !loggedConnected {
-            loggedConnected = true
-            FileHandle.standardError.write("[viewer] Syphon サーバーに接続しました\n".data(using: .utf8)!)
-        }
         if lastFrame != nil && !loggedFirstFrame {
             loggedFirstFrame = true
             let s = lastFrame.map { "\($0.width)x\($0.height) fmt=\($0.pixelFormat.rawValue)" } ?? "?"
             FileHandle.standardError.write("[viewer] フレーム受信中 \(s)\n".data(using: .utf8)!)
         }
         if statusFrames % 180 == 0 && lastFrame == nil {
-            FileHandle.standardError.write("[viewer] スケッチの Syphon 出力を待機中…（connected=\(source.isConnected)）\n".data(using: .utf8)!)
+            FileHandle.standardError.write("[viewer] スケッチの Syphon 出力を待機中…\n".data(using: .utf8)!)
         }
 
         guard let drawable = view.currentDrawable,
@@ -221,5 +304,35 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
         descriptor.fragmentFunction = ffn
         descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
         return try? device.makeRenderPipelineState(descriptor: descriptor)
+    }
+}
+
+/// 子スケッチの `InputInjectionPlugin` が読む JSON Lines 1 行に対応する送出イベント。
+/// オプショナルは `encodeIfPresent` で nil キーが省かれる（種別ごとに必要な field のみ出る）。
+private struct OutEvent: Encodable {
+    let t: String
+    var x: Float?
+    var y: Float?
+    var button: Int?
+    var dx: Float?
+    var dy: Float?
+    var code: UInt16?
+    var chars: String?
+    var `repeat`: Bool?
+
+    init(
+        t: String, x: Float? = nil, y: Float? = nil, button: Int? = nil,
+        dx: Float? = nil, dy: Float? = nil, code: UInt16? = nil,
+        chars: String? = nil, repeat isRepeat: Bool? = nil
+    ) {
+        self.t = t; self.x = x; self.y = y; self.button = button
+        self.dx = dx; self.dy = dy; self.code = code
+        self.chars = chars; self.repeat = isRepeat
+    }
+
+    /// 1 行の JSON 文字列にエンコードする（改行は呼び出し側 / `sendLine` が付ける）。
+    func jsonLine() -> String? {
+        guard let data = try? JSONEncoder().encode(self) else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 }

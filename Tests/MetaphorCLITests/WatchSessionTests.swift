@@ -6,8 +6,10 @@ import XCTest
 
 private final class MockLaunchedProcess: LaunchedProcess {
     private(set) var terminated = false
+    private(set) var sentLines: [String] = []
     var isRunning: Bool { !terminated }
     func terminate() { terminated = true }
+    func sendLine(_ line: String) { sentLines.append(line) }
 }
 
 private final class RecordingLauncher: ProcessLaunching {
@@ -97,6 +99,49 @@ final class WatchSessionTests: XCTestCase {
         XCTAssertEqual(launcher.launches, [["swift", "run", "--skip-build"]])
         // 監視を開始
         XCTAssertTrue(watcher.started)
+    }
+
+    func testForwardInputGoesToCurrentChild() throws {
+        let runner = RecordingProcessRunner()
+        let launcher = RecordingLauncher()
+        let watcher = ManualFileWatcher()
+        let console = BufferedConsole()
+        let session = makeSession(runner: runner, launcher: launcher, watcher: watcher, console: console)
+
+        try session.start()
+        session.forwardInput(#"{"t":"mouseMove","x":1,"y":2}"#)
+
+        XCTAssertEqual(launcher.processes.count, 1)
+        XCTAssertEqual(launcher.processes[0].sentLines, [#"{"t":"mouseMove","x":1,"y":2}"#])
+    }
+
+    func testForwardInputAfterReloadTargetsNewChild() throws {
+        let runner = RecordingProcessRunner()
+        let launcher = RecordingLauncher()
+        let watcher = ManualFileWatcher()
+        let console = BufferedConsole()
+        let session = makeSession(runner: runner, launcher: launcher, watcher: watcher, console: console)
+
+        try session.start()
+        watcher.fireChange()  // 子を入れ替え
+        session.forwardInput("hi")
+
+        // 新しい子にだけ届き、終了した古い子には届かない。
+        XCTAssertEqual(launcher.processes.count, 2)
+        XCTAssertTrue(launcher.processes[0].sentLines.isEmpty)
+        XCTAssertEqual(launcher.processes[1].sentLines, ["hi"])
+    }
+
+    func testForwardInputWithNoChildIsNoOp() {
+        let runner = RecordingProcessRunner()
+        let launcher = RecordingLauncher()
+        let watcher = ManualFileWatcher()
+        let console = BufferedConsole()
+        let session = makeSession(runner: runner, launcher: launcher, watcher: watcher, console: console)
+
+        // start していない（子が居ない）状態でもクラッシュしない。
+        session.forwardInput("noop")
+        XCTAssertTrue(launcher.processes.isEmpty)
     }
 
     func testReloadTerminatesPreviousAndRelaunches() throws {

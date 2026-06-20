@@ -25,7 +25,8 @@ public func captureSyphonFrame(
 
     // サーバー接続を待つ。Syphon のサーバー発見は NSDistributedNotificationCenter
     // 経由（run loop 配送）なので、run loop を回しながら待つ必要がある。
-    while !source.connectIfAvailable() {
+    while !source.isConnected {
+        source.poll()
         if Date() >= deadline { return false }
         RunLoop.current.run(until: Date().addingTimeInterval(0.1))
     }

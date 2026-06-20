@@ -24,6 +24,10 @@ public func runViewerWatch(
 
     // CLI 版バナーは WatchSession.start() が出す（viewer/非 viewer 共通の単一箇所）。
 
+    // 終了した子の stdin（閉じたパイプ）へ入力転送を書き込んでも SIGPIPE で
+    // ビューアが死なないようにする。
+    installSIGPIPEIgnore()
+
     // このプロセス固有の Syphon 名（同一マシンで複数 watch しても衝突しない）。
     let syphonName = "metaphor-watch-\(ProcessInfo.processInfo.processIdentifier)"
 
@@ -80,6 +84,18 @@ private final class ViewerWatchDelegate: NSObject, NSApplicationDelegate {
             return
         }
         self.viewer = viewer
+
+        // ビューア上のマウス/キー入力を、動作中の子スケッチの stdin へ転送する。
+        viewer.onInput = { [weak session] line in
+            session?.forwardInput(line)
+        }
+
+        // 子の（再）起動時に、ビューアを新しい Syphon サーバー（同名・別 UUID）へ
+        // 張り替えさせる。コールバックはバックグラウンドキューから来るのでメインへホップ。
+        session.onChildLaunched = { [weak viewer] in
+            DispatchQueue.main.async { viewer?.notifyChildRelaunched() }
+        }
+
         viewer.show()
 
         // 初回ビルド+起動と監視はバックグラウンドで（UI を止めない）。
