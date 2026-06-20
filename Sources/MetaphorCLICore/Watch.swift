@@ -10,6 +10,8 @@ public protocol LaunchedProcess: AnyObject {
     var isRunning: Bool { get }
     /// プロセスに終了を要求し、終了まで待つ。
     func terminate()
+    /// 子の stdin へ 1 行（末尾改行付き）書き込む。入力イベント（JSON Lines）の転送に使う。
+    func sendLine(_ line: String)
 }
 
 /// 子プロセスを**ブロックせずに**起動する抽象。テストで差し替え可能。
@@ -79,6 +81,16 @@ final class FoundationLaunchedProcess: LaunchedProcess {
         process.terminate()  // SIGTERM
         process.waitUntilExit()
         try? stdinWrite.close()
+    }
+
+    func sendLine(_ line: String) {
+        guard process.isRunning, let data = (line + "\n").data(using: .utf8) else { return }
+        // パイプが閉じている（子が終了直後など）と SIGPIPE/例外になりうるので握りつぶす。
+        do {
+            try stdinWrite.write(contentsOf: data)
+        } catch {
+            // 子が消えている瞬間の取りこぼしは無視（次フレームの再接続で回復）。
+        }
     }
 }
 
@@ -174,7 +186,16 @@ public final class WatchSession {
     private let binaryResolver: any SketchBinaryResolving
     private let extraEnvironment: [String: String]?
 
-    private var current: (any LaunchedProcess)?
+    /// 動作中の子スケッチ。再ビルド（バックグラウンドキュー）から書き換わり、
+    /// 入力転送（メインスレッドの `forwardInput`）から読まれるため、頻発する
+    /// マウス移動でのデータ競合を避けるようロックで保護する。getter は強参照を
+    /// 返すので、読んだ直後に reload が走っても掴んだ子は有効なまま。
+    private let currentLock = NSLock()
+    private var _current: (any LaunchedProcess)?
+    private var current: (any LaunchedProcess)? {
+        get { currentLock.lock(); defer { currentLock.unlock() }; return _current }
+        set { currentLock.lock(); defer { currentLock.unlock() }; _current = newValue }
+    }
     /// 解決済みの実行ファイルパス（初回解決後にキャッシュ）。
     private var resolvedBinary: String?
 
@@ -222,6 +243,12 @@ public final class WatchSession {
         watcher.stop()
         current?.terminate()
         current = nil
+    }
+
+    /// 入力イベント（JSON Lines 1 行）を現在動作中の子スケッチへ転送する。
+    /// 再ビルド中で子が居ない瞬間は黙って捨てる（次の子に引き継がない）。
+    public func forwardInput(_ line: String) {
+        current?.sendLine(line)
     }
 
     /// ビルドが通った場合のみ、前のスケッチを終了して新しく起動する。

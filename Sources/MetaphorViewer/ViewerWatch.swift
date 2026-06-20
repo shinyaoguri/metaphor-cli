@@ -80,6 +80,12 @@ private final class ViewerWatchDelegate: NSObject, NSApplicationDelegate {
             return
         }
         self.viewer = viewer
+
+        // ビューア上のマウス/キー入力を、動作中の子スケッチの stdin へ転送する。
+        viewer.onInput = { [weak session] line in
+            session?.forwardInput(line)
+        }
+
         viewer.show()
 
         // 初回ビルド+起動と監視はバックグラウンドで（UI を止めない）。
