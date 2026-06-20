@@ -5,6 +5,7 @@ import AppKit
 /// `NSApplication` を立ち上げてウィンドウを表示し、ウィンドウが閉じられるまで実行する。
 /// `metaphor watch` のビューア統合（後続フェーズ）でも、この窓表示部分を再利用する。
 public func runViewer(serverName: String, title: String) {
+    // ウィンドウ/MTKView を作る前に AppKit を初期化する（CLI から GUI を使うため）。
     let app = NSApplication.shared
     app.setActivationPolicy(.regular)
 

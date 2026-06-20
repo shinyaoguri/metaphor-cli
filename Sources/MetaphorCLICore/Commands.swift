@@ -66,7 +66,7 @@ public struct CommandLineTool {
         case "examples", "templates":
             ExamplesCommand(console: console).run()
         case "version", "--version":
-            console.write("\(BuildInfo.name) \(BuildInfo.version)")
+            console.write(BuildInfo.fullIdentifier)
         case "help", "--help", "-h":
             console.write(Self.helpText)
         default:

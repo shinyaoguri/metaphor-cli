@@ -6,7 +6,7 @@ import MetaphorCLICore
 /// 名前付き Syphon サーバーのフレームをウィンドウに表示するライブビューア。
 ///
 /// `MTKView` に Syphon の最新テクスチャをアスペクト比保持（レターボックス）で
-/// blit する。フレームは ``SyphonFrameSource`` から取得し、metaphor が flipped:true で
+/// 表示する。フレームは ``SyphonFrameSource`` から取得し、metaphor が flipped:true で
 /// publish するため、サンプリング時に上下反転する。
 public final class ViewerWindow: NSObject, MTKViewDelegate {
     private let device: MTLDevice
@@ -17,11 +17,14 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
     private let window: NSWindow
     private let view: MTKView
 
-    /// 最後に受信したフレームを保持する自前テクスチャ（bgra8Unorm）。
-    /// Syphon テクスチャは rgba8Unorm ラベルだが中身は BGRA のため、bgra8Unorm に
-    /// blit コピーすることで色を正しく扱える。さらに子プロセス再起動中（サーバー不在）も
-    /// 直前のフレームを表示し続けられる（黒画面を防ぐ）。
-    private var held: MTLTexture?
+    /// Syphon フレームをアスペクト比保持で描くオフスクリーンテクスチャ（ドローアブル相当サイズ）。
+    /// これをドローアブルへ blit してから present する。
+    private var offscreen: MTLTexture?
+
+    /// 最後に受信した Syphon フレーム。フレームが来ないフレーム（newFrameImage が nil）
+    /// でも直前の画を出し続けるために保持する。Syphon テクスチャは bgra8Unorm なので
+    /// そのままサンプルすれば色は正しい。
+    private var lastFrame: MTLTexture?
 
     /// - Parameters:
     ///   - serverName: 接続する Syphon サーバー名（子プロセスの METAPHOR_SYPHON_NAME）。
@@ -56,6 +59,9 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
         window.center()
         view.colorPixelFormat = .bgra8Unorm
         view.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        // ドローアブルへ blit コピーするため framebufferOnly を無効化する。
+        // （ドローアブルへ直接テクスチャをサンプル描画すると画面が黒くなる環境への回避策）
+        view.framebufferOnly = false
         view.delegate = self
         view.preferredFramesPerSecond = 60
         view.autoresizingMask = [.width, .height]
@@ -77,79 +83,114 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
 
     public func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
+    private var statusFrames = 0
+    private var loggedConnected = false
+    private var loggedFirstFrame = false
+
+    private var framesSinceConnect = 0
+
     public func draw(in view: MTKView) {
         // サーバー未接続/無効（子プロセス再起動）なら接続し直す。
         if !source.isConnected {
+            lastFrame = nil  // 旧サーバーのテクスチャは無効化（retire 済みを掴まない）
+            framesSinceConnect = 0
             _ = source.connectIfAvailable()
         }
 
-        // 最新フレームがあれば held にコピーして保持。
-        if let src = source.currentTexture() {
-            updateHeldTexture(from: src)
+        // 最新フレーム（bgra8Unorm）。来ていなければ直前フレームを使う。
+        if let frame = source.currentTexture() {
+            lastFrame = frame
+        }
+
+        // 接続済みなのに一定時間フレームが来なければ繋ぎ直す（誤接続/取り残しサーバー
+        // からの自己回復）。約2秒（120フレーム）でリセット。
+        if source.isConnected {
+            framesSinceConnect += 1
+            if lastFrame == nil && framesSinceConnect > 120 {
+                source.reconnect()
+                framesSinceConnect = 0
+            }
+        }
+
+        // 状態をターミナルに表示（接続・フレーム受信の有無を可視化）。
+        statusFrames += 1
+        if source.isConnected && !loggedConnected {
+            loggedConnected = true
+            FileHandle.standardError.write("[viewer] Syphon サーバーに接続しました\n".data(using: .utf8)!)
+        }
+        if lastFrame != nil && !loggedFirstFrame {
+            loggedFirstFrame = true
+            let s = lastFrame.map { "\($0.width)x\($0.height) fmt=\($0.pixelFormat.rawValue)" } ?? "?"
+            FileHandle.standardError.write("[viewer] フレーム受信中 \(s)\n".data(using: .utf8)!)
+        }
+        if statusFrames % 180 == 0 && lastFrame == nil {
+            FileHandle.standardError.write("[viewer] スケッチの Syphon 出力を待機中…（connected=\(source.isConnected)）\n".data(using: .utf8)!)
         }
 
         guard let drawable = view.currentDrawable,
-              let descriptor = view.currentRenderPassDescriptor,
-              let commandBuffer = commandQueue.makeCommandBuffer(),
-              let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) else {
+              let commandBuffer = commandQueue.makeCommandBuffer() else {
             return
         }
+        let dw = drawable.texture.width
+        let dh = drawable.texture.height
 
-        // held（直前フレーム）を表示。再ビルド中も最後の画を出し続ける。
-        if let texture = held {
-            let fit = aspectFitRect(
-                drawableWidth: Double(view.drawableSize.width),
-                drawableHeight: Double(view.drawableSize.height),
-                contentWidth: texture.width,
-                contentHeight: texture.height
+        // ドローアブルと同じサイズのオフスクリーンを用意。
+        if offscreen?.width != dw || offscreen?.height != dh {
+            let od = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: .bgra8Unorm, width: dw, height: dh, mipmapped: false
             )
-            encoder.setViewport(MTLViewport(
-                originX: fit.x, originY: fit.y,
-                width: fit.width, height: fit.height,
-                znear: 0, zfar: 1
-            ))
-            encoder.setRenderPipelineState(pipeline)
-            encoder.setFragmentTexture(texture, index: 0)
-            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            od.usage = [.renderTarget, .shaderRead]
+            od.storageMode = .private
+            offscreen = device.makeTexture(descriptor: od)
         }
 
-        encoder.endEncoding()
+        guard let offscreen else { return }
+
+        // 1) Syphon フレームをオフスクリーンへアスペクト比保持で描画（サンプリングは
+        //    オフスクリーン宛て。ドローアブルへ直接サンプル描画すると画面が黒くなるため）。
+        let rpd = MTLRenderPassDescriptor()
+        rpd.colorAttachments[0].texture = offscreen
+        rpd.colorAttachments[0].loadAction = .clear
+        rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        rpd.colorAttachments[0].storeAction = .store
+        if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) {
+            if let texture = lastFrame {
+                let fit = aspectFitRect(
+                    drawableWidth: Double(dw), drawableHeight: Double(dh),
+                    contentWidth: texture.width, contentHeight: texture.height
+                )
+                encoder.setViewport(MTLViewport(
+                    originX: fit.x, originY: fit.y,
+                    width: fit.width, height: fit.height, znear: 0, zfar: 1
+                ))
+                encoder.setRenderPipelineState(pipeline)
+                encoder.setFragmentTexture(texture, index: 0)
+                encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            }
+            encoder.endEncoding()
+        }
+
+        // 2) オフスクリーンをドローアブルへ blit（サンプル描画でなく blit で書き込む）。
+        if let blit = commandBuffer.makeBlitCommandEncoder() {
+            blit.copy(
+                from: offscreen,
+                sourceSlice: 0, sourceLevel: 0,
+                sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+                sourceSize: MTLSize(width: dw, height: dh, depth: 1),
+                to: drawable.texture,
+                destinationSlice: 0, destinationLevel: 0,
+                destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0)
+            )
+            blit.endEncoding()
+        }
+
         commandBuffer.present(drawable)
-        commandBuffer.commit()
-    }
-
-    /// Syphon の最新テクスチャを held（bgra8Unorm, private）へ blit コピーする。
-    /// サイズが変わったら held を作り直す。
-    private func updateHeldTexture(from src: MTLTexture) {
-        if held?.width != src.width || held?.height != src.height {
-            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-                pixelFormat: .bgra8Unorm, width: src.width, height: src.height, mipmapped: false
-            )
-            descriptor.usage = [.shaderRead]
-            descriptor.storageMode = .private
-            held = device.makeTexture(descriptor: descriptor)
-        }
-        guard let held,
-              let commandBuffer = commandQueue.makeCommandBuffer(),
-              let blit = commandBuffer.makeBlitCommandEncoder() else {
-            return
-        }
-        blit.copy(
-            from: src,
-            sourceSlice: 0, sourceLevel: 0,
-            sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
-            sourceSize: MTLSize(width: src.width, height: src.height, depth: 1),
-            to: held,
-            destinationSlice: 0, destinationLevel: 0,
-            destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0)
-        )
-        blit.endEncoding()
         commandBuffer.commit()
     }
 
     // MARK: - Helpers
 
-    /// フルスクリーン三角形で Syphon テクスチャをサンプルする blit パイプライン。
+    /// フルスクリーン三角形で held テクスチャをサンプルする blit パイプライン。
     /// Syphon フレームは上下反転しているため UV の V を反転する。
     private static func makeBlitPipeline(device: MTLDevice) -> MTLRenderPipelineState? {
         let source = """
@@ -160,7 +201,9 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
             float2 p[3] = { float2(-1.0, -1.0), float2(3.0, -1.0), float2(-1.0, 3.0) };
             VOut o;
             o.pos = float4(p[vid], 0.0, 1.0);
-            o.uv = float2((p[vid].x + 1.0) * 0.5, 1.0 - (p[vid].y + 1.0) * 0.5);
+            // オフスクリーン描画では NDC→テクスチャの Y 反転が入るため、ここでは
+            // V を反転しない（これで Syphon の上下反転と合わせて正立になる）。
+            o.uv = float2((p[vid].x + 1.0) * 0.5, (p[vid].y + 1.0) * 0.5);
             return o;
         }
         fragment float4 blit_f(VOut in [[stage_in]], texture2d<float> tex [[texture(0)]]) {

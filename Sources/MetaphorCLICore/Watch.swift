@@ -45,22 +45,31 @@ public struct FoundationProcessLauncher: ProcessLaunching {
             }
             process.environment = merged
         }
-        // スケッチのウィンドウ/ログがそのまま端末に出るよう標準入出力を継承。
-        process.standardInput = FileHandle.standardInput
+        // stdin は端末を継承させず**パイプ**にする。
+        // 重要: 端末(TTY)を継承すると、バックグラウンドの子（ヘッドレス時の
+        // InputInjectionPlugin が stdin を読む）が制御端末の読み取りで SIGTTIN を受けて
+        // 停止し、レンダリング/フレーム publish が止まる（ビューア窓が黒くなる）。
+        // 書き込み端は LaunchedProcess が保持して開いたままにする（将来の入力転送で使う）。
+        let stdinPipe = Pipe()
+        process.standardInput = stdinPipe.fileHandleForReading
+        // ログ/ウィンドウはそのまま端末へ。
         process.standardOutput = FileHandle.standardOutput
         process.standardError = FileHandle.standardError
 
         try process.run()
-        return FoundationLaunchedProcess(process)
+        return FoundationLaunchedProcess(process, stdinWrite: stdinPipe.fileHandleForWriting)
     }
 }
 
 /// `FoundationProcessLauncher` が返す `Process` ラッパー。
 final class FoundationLaunchedProcess: LaunchedProcess {
     private let process: Process
+    /// 子の stdin（パイプ書き込み端）。開いたまま保持し、将来の入力転送に使う。
+    private let stdinWrite: FileHandle
 
-    init(_ process: Process) {
+    init(_ process: Process, stdinWrite: FileHandle) {
         self.process = process
+        self.stdinWrite = stdinWrite
     }
 
     var isRunning: Bool { process.isRunning }
@@ -69,6 +78,7 @@ final class FoundationLaunchedProcess: LaunchedProcess {
         guard process.isRunning else { return }
         process.terminate()  // SIGTERM
         process.waitUntilExit()
+        try? stdinWrite.close()
     }
 }
 
