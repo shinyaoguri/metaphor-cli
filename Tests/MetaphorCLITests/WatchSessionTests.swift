@@ -101,14 +101,44 @@ final class WatchSessionTests: XCTestCase {
         XCTAssertTrue(watcher.started)
     }
 
-    func testSketchSwiftArgumentsStripsViewerFlags() {
-        XCTAssertEqual(sketchSwiftArguments(from: ["--no-viewer"]), [])
-        XCTAssertEqual(sketchSwiftArguments(from: ["--viewer"]), [])
+    func testParseWatchArgumentsStripsViewerFlags() {
+        XCTAssertEqual(parseWatchArguments(["--no-viewer"]), ParsedWatchArguments(syphonName: nil, swiftArguments: []))
+        XCTAssertEqual(parseWatchArguments(["--viewer"]), ParsedWatchArguments(syphonName: nil, swiftArguments: []))
         XCTAssertEqual(
-            sketchSwiftArguments(from: ["--no-viewer", "-c", "release", "--viewer"]),
-            ["-c", "release"]
+            parseWatchArguments(["--no-viewer", "-c", "release", "--viewer"]),
+            ParsedWatchArguments(syphonName: nil, swiftArguments: ["-c", "release"])
         )
-        XCTAssertEqual(sketchSwiftArguments(from: ["-c", "release"]), ["-c", "release"])
+        XCTAssertEqual(
+            parseWatchArguments(["-c", "release"]),
+            ParsedWatchArguments(syphonName: nil, swiftArguments: ["-c", "release"])
+        )
+    }
+
+    func testParseWatchArgumentsExtractsSyphonName() {
+        // 空白区切り
+        XCTAssertEqual(
+            parseWatchArguments(["--syphon-name", "MySketch"]),
+            ParsedWatchArguments(syphonName: "MySketch", swiftArguments: [])
+        )
+        // = 区切り
+        XCTAssertEqual(
+            parseWatchArguments(["--syphon-name=MySketch"]),
+            ParsedWatchArguments(syphonName: "MySketch", swiftArguments: [])
+        )
+        // 他のフラグと混在しても値を巻き込まない／swift 引数は保持
+        XCTAssertEqual(
+            parseWatchArguments(["--syphon-name", "Live", "-c", "release"]),
+            ParsedWatchArguments(syphonName: "Live", swiftArguments: ["-c", "release"])
+        )
+        // 値が無い末尾の --syphon-name は無視、空文字も無効
+        XCTAssertEqual(
+            parseWatchArguments(["-c", "release", "--syphon-name"]),
+            ParsedWatchArguments(syphonName: nil, swiftArguments: ["-c", "release"])
+        )
+        XCTAssertEqual(
+            parseWatchArguments(["--syphon-name", ""]),
+            ParsedWatchArguments(syphonName: nil, swiftArguments: [])
+        )
     }
 
     func testForwardInputGoesToCurrentChild() throws {
