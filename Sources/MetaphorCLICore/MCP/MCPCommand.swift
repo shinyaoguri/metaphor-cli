@@ -60,7 +60,8 @@ public struct MCPCommand {
                 "METAPHOR_VIEWER": "1",   // ヘッドレス + タイマー駆動
                 "METAPHOR_PROBE": "1",    // Probe を自動登録
                 "METAPHOR_SYPHON_NAME": syphonName,
-            ]
+            ],
+            captureBuildOutput: true   // build_status 用にビルド出力を捕捉
         )
 
         installSignalHandlers(session: session)
@@ -73,7 +74,9 @@ public struct MCPCommand {
         }
 
         let handler = SketchToolHandler(
-            snapshotTool: ProbeSnapshotTool(sketchDirectory: directory)
+            snapshotTool: ProbeSnapshotTool(sketchDirectory: directory),
+            forwardInput: { [weak session] line in session?.forwardInput(line) },
+            buildStatusProvider: { [weak session] in session?.lastBuildOutcome }
         )
         let server = MCPServer(
             serverName: "metaphor",
@@ -115,7 +118,9 @@ public struct MCPCommand {
     起動し、stdin/stdout で MCP(JSON-RPC/stdio) を喋る。
 
     Tools:
-      snapshot  現在フレームの PNG と内部状態(frame.json)を返す
+      snapshot      現在フレームの PNG と内部状態(frame.json)を返す
+      input         マウス/キー入力を動作中のスケッチへ送る
+      build_status  直近の `swift build` の成否・エラーを返す
 
     引数を省略するとカレントディレクトリのスケッチを対象にする。
     """

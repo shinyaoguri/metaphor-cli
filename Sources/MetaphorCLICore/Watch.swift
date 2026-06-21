@@ -190,6 +190,23 @@ public final class PollingFileWatcher: FileWatching {
 /// `metaphor watch` のコアロジック。ビルド・起動・再起動の制御のみを担い、
 /// 実行ループやシグナル処理は ``WatchCommand`` 側に置く。注入された
 /// ``ProcessRunning`` / ``ProcessLaunching`` / ``FileWatching`` により単体テスト可能。
+/// `swift build` の結果サマリ。`metaphor mcp` の `build_status` などが参照する。
+public struct BuildOutcome: Equatable {
+    public let succeeded: Bool
+    public let exitCode: Int32
+    /// ビルド出力（stderr 中心）。`captureBuildOutput=true` のときだけ中身が入る。
+    public let output: String
+    /// 初回ビルドか（reload ではなく start 時）。
+    public let initial: Bool
+
+    public init(succeeded: Bool, exitCode: Int32, output: String, initial: Bool) {
+        self.succeeded = succeeded
+        self.exitCode = exitCode
+        self.output = output
+        self.initial = initial
+    }
+}
+
 public final class WatchSession {
     private let directory: URL
     private let swiftArguments: [String]
@@ -199,6 +216,18 @@ public final class WatchSession {
     private let watcher: any FileWatching
     private let binaryResolver: any SketchBinaryResolving
     private let extraEnvironment: [String: String]?
+    /// true のとき `swift build` の出力を捕捉して `lastBuildOutcome` に残す
+    /// （`metaphor mcp` の `build_status` 用）。false（既定 = `watch`）では従来どおり
+    /// 端末へ素通しし、出力テキストは記録しない。
+    private let captureBuildOutput: Bool
+
+    private let buildLock = NSLock()
+    private var _lastBuildOutcome: BuildOutcome?
+    /// 直近の `swift build` の結果。`captureBuildOutput=true` のときだけ `output` に
+    /// ビルド出力（エラー含む）が入る。
+    public var lastBuildOutcome: BuildOutcome? {
+        buildLock.lock(); defer { buildLock.unlock() }; return _lastBuildOutcome
+    }
 
     /// 動作中の子スケッチ。再ビルド（バックグラウンドキュー）から書き換わり、
     /// 入力転送（メインスレッドの `forwardInput`）から読まれるため、頻発する
@@ -226,7 +255,8 @@ public final class WatchSession {
         launcher: any ProcessLaunching,
         watcher: any FileWatching,
         binaryResolver: any SketchBinaryResolving = SwiftPMBinaryResolver(),
-        extraEnvironment: [String: String]? = nil
+        extraEnvironment: [String: String]? = nil,
+        captureBuildOutput: Bool = false
     ) {
         self.directory = directory
         self.swiftArguments = swiftArguments
@@ -236,6 +266,7 @@ public final class WatchSession {
         self.watcher = watcher
         self.binaryResolver = binaryResolver
         self.extraEnvironment = extraEnvironment
+        self.captureBuildOutput = captureBuildOutput
     }
 
     /// 初回ビルド+起動を行い、ファイル監視を開始する。
@@ -270,6 +301,22 @@ public final class WatchSession {
         current?.sendLine(line)
     }
 
+    /// 直近ビルドの結果を記録する。`captureBuildOutput=false` のときは出力テキストは空。
+    private func recordBuildOutcome(_ result: ProcessResult, initial: Bool) {
+        let output = [result.standardError, result.standardOutput]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        let outcome = BuildOutcome(
+            succeeded: result.exitCode == 0,
+            exitCode: result.exitCode,
+            output: output,
+            initial: initial
+        )
+        buildLock.lock()
+        _lastBuildOutcome = outcome
+        buildLock.unlock()
+    }
+
     /// ビルドが通った場合のみ、前のスケッチを終了して新しく起動する。
     /// ビルド失敗時は動作中のスケッチを維持する（壊れた編集で窓を消さない）。
     private func rebuildAndLaunch(initial: Bool) {
@@ -277,8 +324,10 @@ public final class WatchSession {
             executable: "/usr/bin/env",
             arguments: ["swift", "build"] + swiftArguments,
             currentDirectory: directory,
-            captureOutput: false
+            captureOutput: captureBuildOutput
         )) ?? ProcessResult(exitCode: -1)
+
+        recordBuildOutcome(build, initial: initial)
 
         guard build.exitCode == 0 else {
             if initial {
