@@ -1,9 +1,10 @@
 name: Release on merge
 
-# When a develop -> main PR is merged with a release:* label, dispatch the
-# existing Release workflow with the bump derived from the label. This keeps
-# release.yml (build, version pin, tag, GitHub Release, Homebrew tap push) as
-# the single source of release logic — we only change *who* triggers it.
+# When a PR is merged to main with a release:* label, dispatch the existing
+# Release workflow with the bump derived from the label. This keeps release.yml
+# (build, version pin, tag, GitHub Release, Homebrew tap push) as the single
+# source of release logic — we only change *who* triggers it. PRs without a
+# release:* label merge normally and do not release.
 on:
   pull_request:
     types: [closed]
