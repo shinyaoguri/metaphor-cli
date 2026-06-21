@@ -36,6 +36,21 @@ CI は `scripts/check-contract.sh` で契約トークンの消失を検知する
 `metaphor` の安定版 Release 時に `repository_dispatch`（`syphon-release`）を受けて
 `.github/workflows/syphon-bump.yml` が自動更新 PR を作成する。
 
-## Branching
+## Branching (develop 統合 + main リリーストレイン)
 
-`main` のみ長命。変更はブランチ → PR → squash マージ。
+- **`develop`** — デフォルトブランチ／統合ライン。feature/fix/chore PR はすべて `develop` 宛。保護: PR必須・`build-and-test` 必須。
+- **`main`** — **リリース専用**。変更は `develop → main` PR のみ（**直push禁止**・両ブランチ ruleset）。`develop → main` PR に `release:patch|minor|major` ラベルを付けてマージすると自動リリース。
+- マージは **squash のみ**、マージ後ブランチ自動削除。
+
+### リリース手順
+```bash
+# 通常の作業は develop 宛
+gh pr create --base develop --title "..."
+# リリースするとき
+gh pr create --base main --head develop --title "Release: ..." --label release:minor
+gh pr merge --squash   # マージで release-on-merge.yml が release.yml を dispatch
+```
+`release-on-merge.yml` がラベルから bump を判定し、既存の **Release** workflow を起動
+（tarball/Formula 生成 → `shinyaoguri/homebrew-tap` へ Formula push）。ラベル無しの
+`develop → main` マージはリリースしない。prerelease は Release workflow の
+`workflow_dispatch` で手動。

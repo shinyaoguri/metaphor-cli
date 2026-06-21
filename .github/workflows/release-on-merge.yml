@@ -1,0 +1,48 @@
+name: Release on merge
+
+# When a develop -> main PR is merged with a release:* label, dispatch the
+# existing Release workflow with the bump derived from the label. This keeps
+# release.yml (build, version pin, tag, GitHub Release, Homebrew tap push) as
+# the single source of release logic — we only change *who* triggers it.
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  actions: write   # dispatch release.yml via workflow_dispatch
+  contents: read
+
+jobs:
+  dispatch-release:
+    if: >
+      github.event.pull_request.merged == true &&
+      (contains(github.event.pull_request.labels.*.name, 'release:patch') ||
+       contains(github.event.pull_request.labels.*.name, 'release:minor') ||
+       contains(github.event.pull_request.labels.*.name, 'release:major'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine bump from label
+        id: bump
+        env:
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
+        run: |
+          set -euo pipefail
+          if echo "$LABELS" | grep -q 'release:major'; then
+            BUMP=major
+          elif echo "$LABELS" | grep -q 'release:minor'; then
+            BUMP=minor
+          else
+            BUMP=patch
+          fi
+          echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
+          echo "Selected bump from labels [$LABELS]: $BUMP"
+      - name: Dispatch Release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run release.yml \
+            -R "${{ github.repository }}" \
+            --ref main \
+            -f bump="${{ steps.bump.outputs.bump }}"
+          echo "Dispatched release.yml (bump=${{ steps.bump.outputs.bump }})."
