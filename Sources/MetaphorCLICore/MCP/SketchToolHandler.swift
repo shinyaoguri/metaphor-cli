@@ -12,7 +12,7 @@ public final class SketchToolHandler: MCPToolHandling {
     private let forwardInput: (String) -> Void
     private let buildStatusProvider: () -> BuildOutcome?
     /// 入力注入が可能か。共有セッションへアタッチした `metaphor mcp` では、子の stdin は
-    /// watch 側が所有しているため false（`input` は Phase 2）。
+    /// watch 側が所有しており、かつ AI からの入力注入は対象外のため false。
     private let inputAvailable: Bool
 
     public init(

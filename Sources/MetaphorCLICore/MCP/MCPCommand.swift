@@ -63,7 +63,7 @@ public struct MCPCommand {
             }
             handler = SketchToolHandler(
                 snapshotTool: ProbeSnapshotTool(sketchDirectory: directory),
-                forwardInput: { _ in },   // 共有セッションでは入力注入は未対応（Phase 2）
+                forwardInput: { _ in },   // 共有セッションでは AI 入力注入は対象外（操作はコード編集）
                 buildStatusProvider: { SharedSession.readBuildStatus(for: directory) },
                 inputAvailable: false
             )
