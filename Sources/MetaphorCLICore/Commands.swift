@@ -63,6 +63,11 @@ public struct CommandLineTool {
                 currentDirectory: currentDirectory,
                 executablePath: executablePath
             ).run(arguments: commandArguments)
+        case "mcp":
+            try MCPCommand(
+                console: console,
+                currentDirectory: currentDirectory
+            ).run(arguments: commandArguments)
         case "examples", "templates":
             ExamplesCommand(console: console).run()
         case "version", "--version":
@@ -81,6 +86,7 @@ public struct CommandLineTool {
       metaphor new <name> [--template 2d] [--metaphor-version 0.2.3]
       metaphor run [swift-run-arguments...]
       metaphor watch [--no-viewer] [--syphon-name <name>] [swift-build/run-arguments...]
+      metaphor mcp [sketch-dir]
       metaphor update [check|self|library|all]
       metaphor doctor
       metaphor examples
@@ -90,6 +96,7 @@ public struct CommandLineTool {
       new       Create a new metaphor sketch package
       run       Run the current Swift package via `swift run`
       watch     Live-reload the sketch in a viewer window (--no-viewer for the sketch's own window)
+      mcp       Serve a local MCP server (snapshot/observe the sketch for AI agents)
       update    Check or apply metaphor CLI/library updates
       doctor    Check local Swift/Xcode/package setup
       examples  List available project templates
