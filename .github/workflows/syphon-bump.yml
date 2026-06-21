@@ -81,7 +81,7 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         with:
           branch: chore/bump-syphon-${{ steps.resolve.outputs.tag }}
-          base: main
+          base: develop
           title: "chore: bump Syphon.xcframework pin to ${{ steps.resolve.outputs.tag }}"
           commit-message: "chore: bump Syphon.xcframework pin to ${{ steps.resolve.outputs.tag }}"
           body: |
