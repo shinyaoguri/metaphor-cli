@@ -21,6 +21,20 @@
 | 4 | **Probe ファイル契約**<br>`.metaphor/probe/request.json`（リクエスト）/ `.metaphor/probe/current/frame.{png,json}`（出力）と `frame.json` スキーマ | `metaphor`（`MetaphorProbeConfig.swift` / `ProbeFrameMetadata.swift`） | AI エージェント・ツール（必要なら `metaphor-cli`） |
 | 5 | **Syphon サーバー名 / headless 挙動**<br>`METAPHOR_VIEWER=1` で `METAPHOR_SYPHON_NAME` のサーバーへ publish | `metaphor` headless モード（`SketchRunner.swift`） | `metaphor-cli`（`SyphonFrameSource.swift`） |
 
+### `frame.json` スキーマのバージョニング（契約点 4 の補足）
+
+`frame.json` は `schemaVersion`（整数）を持ち、**前方互換の additive 変更**を原則とします。
+
+- **現行 = `schemaVersion: 2`**。トップレベルキー: `schemaVersion` / `id` / `label?` /
+  `frame` / `time` / `size{width,height}` / `custom{}` / `warnings[]` / `stats?`。
+- `stats`（v2 で追加）= `meanColor[3]` / `meanLuminance` / `contentFraction` /
+  `contentBounds?{x,y,width,height}`（正規化・原点左上、blank 時省略） / `sampleGrid`。
+- **consumer 規約**: 未知のキーは無視する。`metaphor-cli` の MCP サーバは
+  `frame.json` を **verbatim 透過**するため、additive なフィールド追加では cli の
+  コード変更は不要（将来 cli が個別フィールドを解釈し始めたら本表に追記する）。
+- キーのリネーム／削除／型変更は **破壊的変更**。`schemaVersion` を上げ、両リポジトリの
+  本節を同時に更新し、`metaphor-cli` 側に対応 Issue/PR を立てること。
+
 ## 変更時のルール（エージェント・人間共通）
 
 上表のトークン（環境変数名・JSON のキー/値・Probe のパスやスキーマ・Syphon の
