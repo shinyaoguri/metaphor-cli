@@ -25,10 +25,13 @@
 
 `frame.json` は `schemaVersion`（整数）を持ち、**前方互換の additive 変更**を原則とします。
 
-- **現行 = `schemaVersion: 2`**。トップレベルキー: `schemaVersion` / `id` / `label?` /
-  `frame` / `time` / `size{width,height}` / `custom{}` / `warnings[]` / `stats?`。
+- **現行 = `schemaVersion: 3`**。トップレベルキー: `schemaVersion` / `id` / `label?` /
+  `frame` / `time` / `size{width,height}` / `custom{}` / `customTypes{}` / `warnings[]` / `stats?`。
 - `stats`（v2 で追加）= `meanColor[3]` / `meanLuminance` / `contentFraction` /
   `contentBounds?{x,y,width,height}`（正規化・原点左上、blank 時省略） / `sampleGrid`。
+- `customTypes`（v3 で追加）= `custom` の各キー → 型タグ（`double` / `int` / `string` /
+  `bool` / `vec2` / `vec3` / `vec4`）。ベクトルが裸の配列になるため値だけでは
+  `vec2` と「2 要素配列」を区別できない問題を解消する。
 - **consumer 規約**: 未知のキーは無視する。`metaphor-cli` の MCP サーバは
   `frame.json` を **verbatim 透過**するため、additive なフィールド追加では cli の
   コード変更は不要（将来 cli が個別フィールドを解釈し始めたら本表に追記する）。
