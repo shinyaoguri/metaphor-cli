@@ -23,6 +23,10 @@ public final class SketchToolHandler: MCPToolHandling {
                             "type": "string",
                             "description": "任意のラベル。frame.json に記録される。",
                         ],
+                        "timeout": [
+                            "type": "number",
+                            "description": "このフレームを待つ最大秒数 (1〜60、既定15)。初回はスケッチの cold-start を待つため長めが安全。",
+                        ],
                     ],
                 ]
             ),
@@ -32,7 +36,8 @@ public final class SketchToolHandler: MCPToolHandling {
     public func call(name: String, arguments: [String: Any]) -> MCPToolResult {
         switch name {
         case "snapshot":
-            return snapshotTool.snapshot(label: arguments["label"] as? String)
+            let timeout = (arguments["timeout"] as? NSNumber)?.doubleValue
+            return snapshotTool.snapshot(label: arguments["label"] as? String, timeoutOverride: timeout)
         default:
             return .text("unknown tool: \(name)", isError: true)
         }

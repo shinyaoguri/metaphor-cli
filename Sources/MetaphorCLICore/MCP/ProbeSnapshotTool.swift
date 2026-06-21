@@ -19,7 +19,10 @@ public final class ProbeSnapshotTool {
     private let pidPrefix: String
     private var counter = 0
 
-    public init(sketchDirectory: URL, timeout: TimeInterval = 5.0) {
+    /// `timeout` は 1 回の snapshot の最大待ち時間。初回はスケッチの cold-start
+    /// （Metal/Syphon 初期化 + 初フレーム）を待つため既定を長めに取る。以降の
+    /// snapshot は通常 1 フレームで返る。
+    public init(sketchDirectory: URL, timeout: TimeInterval = 15.0) {
         let root = sketchDirectory
             .appendingPathComponent(".metaphor", isDirectory: true)
             .appendingPathComponent("probe", isDirectory: true)
@@ -33,9 +36,11 @@ public final class ProbeSnapshotTool {
     }
 
     /// 1 フレームを撮って返す。画像(PNG)と内部状態(frame.json)を content に詰める。
-    public func snapshot(label: String?) -> MCPToolResult {
+    /// `timeoutOverride` を渡すとこの呼び出しだけ待ち時間を変えられる（1〜60s にクランプ）。
+    public func snapshot(label: String?, timeoutOverride: TimeInterval? = nil) -> MCPToolResult {
         counter += 1
         let id = "\(pidPrefix)-\(counter)"
+        let effectiveTimeout = min(60.0, max(1.0, timeoutOverride ?? timeout))
 
         do {
             try writeRequest(id: id, label: label)
@@ -43,7 +48,7 @@ public final class ProbeSnapshotTool {
             return .text("snapshot: request.json を書けませんでした: \(error)", isError: true)
         }
 
-        let deadline = Date().addingTimeInterval(timeout)
+        let deadline = Date().addingTimeInterval(effectiveTimeout)
         while Date() < deadline {
             if let metadata = readFrameMetadataIfMatches(id: id) {
                 return buildResult(metadata: metadata)
@@ -51,7 +56,7 @@ public final class ProbeSnapshotTool {
             usleep(pollInterval)
         }
         return .text(
-            "snapshot: タイムアウト (\(timeout)s)。スケッチが描画中か、METAPHOR_PROBE が有効か確認してください。",
+            "snapshot: タイムアウト (\(effectiveTimeout)s)。スケッチが描画中か、METAPHOR_PROBE が有効か確認してください。",
             isError: true
         )
     }
