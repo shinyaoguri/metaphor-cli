@@ -13,6 +13,7 @@ public func runViewerWatch(
     directory: URL,
     swiftArguments: [String],
     syphonName requestedSyphonName: String? = nil,
+    probeEnabled: Bool = true,
     console: any Console
 ) throws {
     let package = directory.appendingPathComponent("Package.swift")
@@ -33,6 +34,17 @@ public func runViewerWatch(
     // 無ければ watch プロセス固有名（同一マシンで複数 watch しても衝突しない）。
     let syphonName = requestedSyphonName ?? "metaphor-watch-\(ProcessInfo.processInfo.processIdentifier)"
 
+    // Probe（既定 ON、--no-probe で OFF）を有効にすると、子が `.metaphor/probe/` に
+    // フレーム+状態を書けるようになり、`metaphor mcp` がこのセッションへアタッチして
+    // 観測できる（共有セッション）。人間はビューア窓で見つつ、AI は MCP で観測する。
+    var childEnvironment = [
+        "METAPHOR_VIEWER": "1",
+        "METAPHOR_SYPHON_NAME": syphonName,
+    ]
+    if probeEnabled {
+        childEnvironment["METAPHOR_PROBE"] = "1"
+    }
+
     let session = WatchSession(
         directory: directory,
         swiftArguments: swiftArguments,
@@ -40,10 +52,8 @@ public func runViewerWatch(
         processRunner: FoundationProcessRunner(),
         launcher: FoundationProcessLauncher(),
         watcher: PollingFileWatcher(directory: directory),
-        extraEnvironment: [
-            "METAPHOR_VIEWER": "1",
-            "METAPHOR_SYPHON_NAME": syphonName,
-        ]
+        extraEnvironment: childEnvironment,
+        shareSession: probeEnabled
     )
 
     // ウィンドウ/MTKView は applicationDidFinishLaunching の中で作る（CLI ツールから

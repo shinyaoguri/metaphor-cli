@@ -114,6 +114,17 @@ final class WatchSessionTests: XCTestCase {
         )
     }
 
+    func testParseWatchArgumentsHandlesNoProbe() {
+        // 既定は Probe 有効（共有セッション可）。
+        XCTAssertTrue(parseWatchArguments([]).probeEnabled)
+        XCTAssertTrue(parseWatchArguments(["-c", "release"]).probeEnabled)
+        // --no-probe で無効化し、swift 引数からは除去される。
+        XCTAssertEqual(
+            parseWatchArguments(["--no-probe", "-c", "release"]),
+            ParsedWatchArguments(syphonName: nil, probeEnabled: false, swiftArguments: ["-c", "release"])
+        )
+    }
+
     func testParseWatchArgumentsExtractsSyphonName() {
         // 空白区切り
         XCTAssertEqual(

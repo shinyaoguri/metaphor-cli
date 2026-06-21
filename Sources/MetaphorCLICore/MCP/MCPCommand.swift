@@ -48,36 +48,71 @@ public struct MCPCommand {
         // 子の stdin パイプが閉じても SIGPIPE で死なないように。
         installSIGPIPEIgnore()
 
-        let syphonName = "metaphor-mcp-\(ProcessInfo.processInfo.processIdentifier)"
-        let session = WatchSession(
-            directory: directory,
-            swiftArguments: [],
-            console: console,   // print は dup2 により stderr に出る
-            processRunner: FoundationProcessRunner(),
-            launcher: FoundationProcessLauncher(),
-            watcher: PollingFileWatcher(directory: directory),
-            extraEnvironment: [
-                "METAPHOR_VIEWER": "1",   // ヘッドレス + タイマー駆動
-                "METAPHOR_PROBE": "1",    // Probe を自動登録
-                "METAPHOR_SYPHON_NAME": syphonName,
-            ],
-            captureBuildOutput: true   // build_status 用にビルド出力を捕捉
-        )
+        let handler: SketchToolHandler
 
-        installSignalHandlers(session: session)
+        if let manifest = SharedSession.liveManifest(for: directory) {
+            // --- アタッチモード: 動作中の `metaphor watch` を共有 ---
+            // 子を spawn せず・build せず、既存の Probe ファイルで観測する。
+            // 編集は人間/AI がファイルを直接書き、watch が再ビルドする。
+            installSignalHandlers(onStop: nil)
+            if !manifest.probeEnabled {
+                console.writeError(
+                    "[mcp] 警告: アタッチ先セッションは Probe 無効（--no-probe）です。"
+                        + "snapshot は失敗します。watch を --no-probe なしで再起動してください。"
+                )
+            }
+            handler = SketchToolHandler(
+                snapshotTool: ProbeSnapshotTool(sketchDirectory: directory),
+                forwardInput: { _ in },   // 共有セッションでは入力注入は未対応（Phase 2）
+                buildStatusProvider: { SharedSession.readBuildStatus(for: directory) },
+                inputAvailable: false
+            )
+            console.writeError(
+                "[mcp] attached — 動作中の watch セッション (pid \(manifest.pid)) を観測します"
+            )
+        } else {
+            // --- 単独モード（従来）: 自前で子をヘッドレス起動して所有する ---
+            let syphonName = "metaphor-mcp-\(ProcessInfo.processInfo.processIdentifier)"
+            let session = WatchSession(
+                directory: directory,
+                swiftArguments: [],
+                console: console,   // print は dup2 により stderr に出る
+                processRunner: FoundationProcessRunner(),
+                launcher: FoundationProcessLauncher(),
+                watcher: PollingFileWatcher(directory: directory),
+                extraEnvironment: [
+                    "METAPHOR_VIEWER": "1",   // ヘッドレス + タイマー駆動
+                    "METAPHOR_PROBE": "1",    // Probe を自動登録
+                    "METAPHOR_SYPHON_NAME": syphonName,
+                ],
+                captureBuildOutput: true   // build_status 用にビルド出力を捕捉
+            )
 
-        do {
-            try session.start()
-        } catch {
-            console.writeError("[mcp] スケッチ起動に失敗: \(error)")
-            throw CLIError("mcp: スケッチを起動できませんでした", exitCode: 1)
+            installSignalHandlers(onStop: { session.stop() })
+
+            do {
+                try session.start()
+            } catch {
+                console.writeError("[mcp] スケッチ起動に失敗: \(error)")
+                throw CLIError("mcp: スケッチを起動できませんでした", exitCode: 1)
+            }
+
+            handler = SketchToolHandler(
+                snapshotTool: ProbeSnapshotTool(sketchDirectory: directory),
+                forwardInput: { [weak session] line in session?.forwardInput(line) },
+                buildStatusProvider: { [weak session] in session?.lastBuildOutcome }
+            )
+            // server.run() の後始末。単独モードのみ子を止める。
+            defer { session.stop() }
+            runServer(handler: handler, outputHandle: outputHandle, directory: directory)
+            return
         }
 
-        let handler = SketchToolHandler(
-            snapshotTool: ProbeSnapshotTool(sketchDirectory: directory),
-            forwardInput: { [weak session] line in session?.forwardInput(line) },
-            buildStatusProvider: { [weak session] in session?.lastBuildOutcome }
-        )
+        runServer(handler: handler, outputHandle: outputHandle, directory: directory)
+    }
+
+    /// MCP サーバ（stdio）を起動して stdin EOF までブロックする。
+    private func runServer(handler: SketchToolHandler, outputHandle: FileHandle, directory: URL) {
         let server = MCPServer(
             serverName: "metaphor",
             serverVersion: BuildInfo.version,
@@ -88,20 +123,18 @@ public struct MCPCommand {
                 outputHandle.write(data)
             }
         )
-
         console.writeError("[mcp] ready — sketch: \(directory.lastPathComponent)")
         server.run()   // stdin EOF までブロック
-        session.stop()
     }
 
-    /// SIGINT/SIGTERM で子スケッチを止めてから終了する。readLine がメインスレッドを
-    /// ブロックするため、シグナルは専用キューの DispatchSource で受ける。
-    private func installSignalHandlers(session: WatchSession) {
+    /// SIGINT/SIGTERM で（必要なら子スケッチを止めてから）終了する。readLine が
+    /// メインスレッドをブロックするため、シグナルは専用キューの DispatchSource で受ける。
+    private func installSignalHandlers(onStop: (() -> Void)?) {
         let install: (Int32) -> Void = { sig in
             signal(sig, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: sig, queue: .global())
             source.setEventHandler {
-                session.stop()
+                onStop?()
                 Foundation.exit(0)
             }
             source.resume()
