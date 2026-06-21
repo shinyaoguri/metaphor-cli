@@ -191,7 +191,7 @@ public final class PollingFileWatcher: FileWatching {
 /// 実行ループやシグナル処理は ``WatchCommand`` 側に置く。注入された
 /// ``ProcessRunning`` / ``ProcessLaunching`` / ``FileWatching`` により単体テスト可能。
 /// `swift build` の結果サマリ。`metaphor mcp` の `build_status` などが参照する。
-public struct BuildOutcome: Equatable {
+public struct BuildOutcome: Equatable, Codable {
     public let succeeded: Bool
     public let exitCode: Int32
     /// ビルド出力（stderr 中心）。`captureBuildOutput=true` のときだけ中身が入る。
@@ -220,6 +220,10 @@ public final class WatchSession {
     /// （`metaphor mcp` の `build_status` 用）。false（既定 = `watch`）では従来どおり
     /// 端末へ素通しし、出力テキストは記録しない。
     private let captureBuildOutput: Bool
+    /// true のとき共有セッション（`metaphor mcp` がアタッチして観測する）として動作する。
+    /// 起動時に `.metaphor/session.json` を、毎ビルドで `.metaphor/build-status.json` を
+    /// 書き、停止時にマニフェストを削除する。出力テキストも必要なので捕捉を強制する。
+    private let shareSession: Bool
 
     private let buildLock = NSLock()
     private var _lastBuildOutcome: BuildOutcome?
@@ -256,7 +260,8 @@ public final class WatchSession {
         watcher: any FileWatching,
         binaryResolver: any SketchBinaryResolving = SwiftPMBinaryResolver(),
         extraEnvironment: [String: String]? = nil,
-        captureBuildOutput: Bool = false
+        captureBuildOutput: Bool = false,
+        shareSession: Bool = false
     ) {
         self.directory = directory
         self.swiftArguments = swiftArguments
@@ -266,7 +271,9 @@ public final class WatchSession {
         self.watcher = watcher
         self.binaryResolver = binaryResolver
         self.extraEnvironment = extraEnvironment
-        self.captureBuildOutput = captureBuildOutput
+        // 共有セッションでは build-status.json にエラー文も載せたいので捕捉を強制する。
+        self.captureBuildOutput = captureBuildOutput || shareSession
+        self.shareSession = shareSession
     }
 
     /// 初回ビルド+起動を行い、ファイル監視を開始する。
@@ -276,10 +283,26 @@ public final class WatchSession {
         console.write("[watch] \(BuildInfo.cliIdentifier)")
         console.write("metaphor watch: \(directory.path)")
         console.write("[watch] Ctrl-C で停止")
+        if shareSession {
+            publishManifest()
+        }
         rebuildAndLaunch(initial: true)
         try watcher.start { [weak self] in
             self?.reload()
         }
+    }
+
+    /// 共有セッションのマニフェスト（`.metaphor/session.json`）を書き出す。
+    private func publishManifest() {
+        let manifest = SharedSession.Manifest(
+            pid: ProcessInfo.processInfo.processIdentifier,
+            sketchPath: directory.path,
+            syphonName: extraEnvironment?["METAPHOR_SYPHON_NAME"],
+            probeEnabled: extraEnvironment?["METAPHOR_PROBE"] == "1",
+            startedAt: ISO8601DateFormatter().string(from: Date())
+        )
+        SharedSession.writeManifest(manifest, for: directory)
+        console.write("[watch] 共有セッション: metaphor mcp からアタッチ観測できます")
     }
 
     /// 変更検出時の再ビルド+再起動。
@@ -293,6 +316,9 @@ public final class WatchSession {
         watcher.stop()
         current?.terminate()
         current = nil
+        if shareSession {
+            SharedSession.removeManifest(for: directory)
+        }
     }
 
     /// 入力イベント（JSON Lines 1 行）を現在動作中の子スケッチへ転送する。
@@ -315,6 +341,10 @@ public final class WatchSession {
         buildLock.lock()
         _lastBuildOutcome = outcome
         buildLock.unlock()
+
+        if shareSession {
+            SharedSession.writeBuildStatus(outcome, for: directory)
+        }
     }
 
     /// ビルドが通った場合のみ、前のスケッチを終了して新しく起動する。
@@ -376,11 +406,15 @@ public final class WatchSession {
 public struct ParsedWatchArguments: Equatable {
     /// `--syphon-name <name>` で指定された Syphon サーバー名（未指定なら nil）。
     public let syphonName: String?
+    /// Probe を子で有効化するか（既定 true）。`--no-probe` で false。
+    /// 有効だと `metaphor mcp` がアタッチして観測できる（共有セッション）。
+    public let probeEnabled: Bool
     /// `watch` 専用フラグを除いた、swift build/run へ渡す引数。
     public let swiftArguments: [String]
 
-    public init(syphonName: String?, swiftArguments: [String]) {
+    public init(syphonName: String?, probeEnabled: Bool = true, swiftArguments: [String]) {
         self.syphonName = syphonName
+        self.probeEnabled = probeEnabled
         self.swiftArguments = swiftArguments
     }
 }
@@ -392,6 +426,7 @@ public struct ParsedWatchArguments: Equatable {
 /// - `--syphon-name <name>` / `--syphon-name=<name>`（Syphon サーバー名の指定。値ごと除去）
 public func parseWatchArguments(_ args: [String]) -> ParsedWatchArguments {
     var syphonName: String?
+    var probeEnabled = true
     var swift: [String] = []
     let prefix = "--syphon-name="
     var i = 0
@@ -408,6 +443,8 @@ public func parseWatchArguments(_ args: [String]) -> ParsedWatchArguments {
             syphonName = String(arg.dropFirst(prefix.count))
         case arg == "--viewer", arg == "--no-viewer":
             break  // 何もしない（除去）
+        case arg == "--no-probe":
+            probeEnabled = false  // 共有セッションを無効化（除去）
         default:
             swift.append(arg)
         }
@@ -415,7 +452,7 @@ public func parseWatchArguments(_ args: [String]) -> ParsedWatchArguments {
     }
     // 空文字の名前は無効として無視（`--syphon-name ""` 等）。
     if let name = syphonName, name.isEmpty { syphonName = nil }
-    return ParsedWatchArguments(syphonName: syphonName, swiftArguments: swift)
+    return ParsedWatchArguments(syphonName: syphonName, probeEnabled: probeEnabled, swiftArguments: swift)
 }
 
 // MARK: - Watch command (entry point + run loop)
@@ -477,9 +514,14 @@ public struct WatchCommand {
 
         // --no-viewer（このパス）でも、子へ Syphon 名を環境変数で渡しておく。実際に
         // ウィンドウモードで publish するにはスケッチ側の Syphon 有効化が必要。
-        var environment: [String: String]?
+        // Probe（既定 ON、--no-probe で OFF）を有効にすると `metaphor mcp` から
+        // アタッチして観測できる（共有セッション）。
+        var environment: [String: String] = [:]
         if let name = parsed.syphonName {
-            environment = ["METAPHOR_SYPHON_NAME": name]
+            environment["METAPHOR_SYPHON_NAME"] = name
+        }
+        if parsed.probeEnabled {
+            environment["METAPHOR_PROBE"] = "1"
         }
 
         let session = WatchSession(
@@ -489,7 +531,8 @@ public struct WatchCommand {
             processRunner: processRunner,
             launcher: FoundationProcessLauncher(),
             watcher: PollingFileWatcher(directory: currentDirectory),
-            extraEnvironment: environment
+            extraEnvironment: environment.isEmpty ? nil : environment,
+            shareSession: parsed.probeEnabled
         )
 
         try session.start()

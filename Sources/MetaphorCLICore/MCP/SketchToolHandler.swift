@@ -11,15 +11,20 @@ public final class SketchToolHandler: MCPToolHandling {
     private let snapshotTool: ProbeSnapshotTool
     private let forwardInput: (String) -> Void
     private let buildStatusProvider: () -> BuildOutcome?
+    /// 入力注入が可能か。共有セッションへアタッチした `metaphor mcp` では、子の stdin は
+    /// watch 側が所有しており、かつ AI からの入力注入は対象外のため false。
+    private let inputAvailable: Bool
 
     public init(
         snapshotTool: ProbeSnapshotTool,
         forwardInput: @escaping (String) -> Void,
-        buildStatusProvider: @escaping () -> BuildOutcome?
+        buildStatusProvider: @escaping () -> BuildOutcome?,
+        inputAvailable: Bool = true
     ) {
         self.snapshotTool = snapshotTool
         self.forwardInput = forwardInput
         self.buildStatusProvider = buildStatusProvider
+        self.inputAvailable = inputAvailable
     }
 
     /// 子スケッチが受け取る入力イベント種別（stdin JSON Lines の `t`）。
@@ -81,7 +86,8 @@ public final class SketchToolHandler: MCPToolHandling {
         switch name {
         case "snapshot":
             let timeout = (arguments["timeout"] as? NSNumber)?.doubleValue
-            return snapshotTool.snapshot(label: arguments["label"] as? String, timeoutOverride: timeout)
+            let result = snapshotTool.snapshot(label: arguments["label"] as? String, timeoutOverride: timeout)
+            return annotateWithBuildProvenance(result)
         case "input":
             return handleInput(arguments)
         case "build_status":
@@ -91,9 +97,32 @@ public final class SketchToolHandler: MCPToolHandling {
         }
     }
 
+    // MARK: - snapshot provenance
+
+    /// snapshot の結果に「直近ビルドの素性」を 1 行添える。
+    ///
+    /// 共有セッションで人間/AI が編集中だと、撮ったフレームが**ビルド失敗前の旧バイナリ**の
+    /// ものでありうる。直近ビルドが失敗していれば警告を付け、「あなたの編集はまだ反映されて
+    /// いないかもしれない」とエージェントに知らせる（`frame.json`＝ライブラリ側には触れない）。
+    private func annotateWithBuildProvenance(_ result: MCPToolResult) -> MCPToolResult {
+        guard let outcome = buildStatusProvider(), !outcome.succeeded else { return result }
+        let note = "note: 直近の swift build は失敗しています (exit \(outcome.exitCode))。"
+            + "このフレームは編集前のビルドのものの可能性があります。build_status で詳細を確認してください。"
+        var content = result.content
+        content.append(["type": "text", "text": note])
+        return MCPToolResult(content: content, isError: result.isError)
+    }
+
     // MARK: - input
 
     private func handleInput(_ arguments: [String: Any]) -> MCPToolResult {
+        guard inputAvailable else {
+            return .text(
+                "input: 共有セッション（metaphor watch にアタッチ中）では入力注入は未対応です。"
+                    + "コードはファイルを直接編集してください（watch が再ビルドします）。",
+                isError: true
+            )
+        }
         guard let type = arguments["type"] as? String, Self.inputTypes.contains(type) else {
             return .text("input: 'type' が必要です (\(Self.inputTypes.joined(separator: ", ")))", isError: true)
         }

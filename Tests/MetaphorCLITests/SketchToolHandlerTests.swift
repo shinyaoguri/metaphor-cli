@@ -7,13 +7,14 @@ final class SketchToolHandlerTests: XCTestCase {
         var outcome: BuildOutcome?
     }
 
-    private func makeHandler(_ box: Box) -> SketchToolHandler {
+    private func makeHandler(_ box: Box, inputAvailable: Bool = true) -> SketchToolHandler {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("handler-\(ProcessInfo.processInfo.globallyUniqueString)")
         return SketchToolHandler(
             snapshotTool: ProbeSnapshotTool(sketchDirectory: dir, timeout: 1.0),
             forwardInput: { box.lines.append($0) },
-            buildStatusProvider: { box.outcome }
+            buildStatusProvider: { box.outcome },
+            inputAvailable: inputAvailable
         )
     }
 
@@ -82,5 +83,39 @@ final class SketchToolHandlerTests: XCTestCase {
     func testBuildStatusWithoutResult() {
         let result = makeHandler(Box()).call(name: "build_status", arguments: [:])
         XCTAssertFalse(result.isError)
+    }
+
+    // MARK: - Attach mode (shared session)
+
+    func testInputUnavailableInAttachMode() {
+        let box = Box()
+        let handler = makeHandler(box, inputAvailable: false)
+
+        let result = handler.call(name: "input", arguments: ["type": "mouseDown", "x": 1.0, "y": 2.0])
+
+        XCTAssertTrue(result.isError)
+        XCTAssertTrue(box.lines.isEmpty)  // 何も転送しない
+        let text = result.content.first?["text"] as? String
+        XCTAssertTrue(text?.contains("共有セッション") == true)
+    }
+
+    func testSnapshotTimeoutCarriesBuildFailureNote() {
+        // スナップショットはディレクトリが無いのでタイムアウト（isError）。直近ビルドが
+        // 失敗していれば、その素性ノートが追記される。
+        let box = Box()
+        box.outcome = BuildOutcome(succeeded: false, exitCode: 1, output: "error: boom", initial: false)
+        let result = makeHandler(box).call(name: "snapshot", arguments: [:])
+
+        let joined = result.content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        XCTAssertTrue(joined.contains("直近の swift build は失敗"))
+    }
+
+    func testSnapshotNoNoteWhenBuildSucceeded() {
+        let box = Box()
+        box.outcome = BuildOutcome(succeeded: true, exitCode: 0, output: "", initial: false)
+        let result = makeHandler(box).call(name: "snapshot", arguments: [:])
+
+        let joined = result.content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        XCTAssertFalse(joined.contains("直近の swift build は失敗"))
     }
 }
