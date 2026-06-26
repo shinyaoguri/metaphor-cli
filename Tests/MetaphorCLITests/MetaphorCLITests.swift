@@ -76,7 +76,8 @@ final class MetaphorCLITests: XCTestCase {
                 moduleName: "Demo",
                 template: template,
                 metaphorDependency: ".package(path: \"/Users/so/Repos/metaphor\")",
-                metaphorPackageIdentity: "metaphor"
+                metaphorPackageIdentity: "metaphor",
+                metaphorAIDocsPath: "/Users/so/Repos/metaphor"
             )
 
             let package = try TemplateRenderer.packageSwift(context, catalog: catalog)
@@ -94,7 +95,8 @@ final class MetaphorCLITests: XCTestCase {
                     moduleName: "Demo",
                     template: template,
                     metaphorDependency: ".package(path: \"/Users/so/Repos/metaphor\")",
-                    metaphorPackageIdentity: "metaphor"
+                    metaphorPackageIdentity: "metaphor",
+                    metaphorAIDocsPath: "/Users/so/Repos/metaphor"
                 )
 
                 let app = try TemplateRenderer.appSwift(context, catalog: catalog)

@@ -51,6 +51,11 @@ case "$REPO" in
     # Probe file protocol paths.
     check "Sources/MetaphorCore/Probe/MetaphorProbeConfig.swift" \
       ".metaphor/probe"
+    # AI docs consumed by metaphor-cli's `api_reference` MCP tool (must exist).
+    check "llms.txt"
+    check "llms-sketch.txt"
+    check "docs/ai/examples-index.md"
+    check "docs/ai/examples-index.json"
     ;;
   metaphor-cli)
     # Env vars set when spawning the child sketch.
@@ -62,6 +67,11 @@ case "$REPO" in
     # Syphon.xcframework Release pin (binaryTarget fallback).
     check "Package.swift" \
       "releases/download/v" "checksum:"
+    # AI doc filenames the `api_reference` MCP tool reads from the metaphor package.
+    check "Sources/MetaphorCLICore/MCP/MetaphorDocsLocator.swift" \
+      "llms.txt"
+    check "Sources/MetaphorCLICore/MCP/SketchToolHandler.swift" \
+      "llms-sketch.txt" "llms.txt" "docs/ai/examples-index.md"
     ;;
 esac
 

@@ -158,15 +158,20 @@ public struct NewCommand {
 
         let metaphorDependency: String
         let packageIdentity: String
+        // api_reference / AGENTS.md 用の AI ドキュメントの在り処。ローカル checkout は
+        // その絶対パス、リモート版は初回ビルド後に現れる SwiftPM checkout 先。
+        let aiDocsPath: String
         if let localPath = options.value("metaphor-path") {
             let url = PathResolver.url(from: localPath, relativeTo: currentDirectory)
             metaphorDependency = ".package(path: \"\(url.path.swiftLiteralEscaped)\")"
             packageIdentity = options.value("metaphor-package") ?? "metaphor"
+            aiDocsPath = url.path
         } else {
             let url = options.value("metaphor-url") ?? "https://github.com/shinyaoguri/metaphor.git"
             let version = options.value("metaphor-version") ?? latestMetaphorVersion() ?? BuildInfo.defaultMetaphorVersion
             metaphorDependency = ".package(url: \"\(url.swiftLiteralEscaped)\", from: \"\(version.swiftLiteralEscaped)\")"
             packageIdentity = options.value("metaphor-package") ?? "metaphor"
+            aiDocsPath = ".build/checkouts/metaphor"
         }
 
         let context = TemplateContext(
@@ -174,7 +179,8 @@ public struct NewCommand {
             moduleName: NameSanitizer.moduleName(from: projectName),
             template: template,
             metaphorDependency: metaphorDependency,
-            metaphorPackageIdentity: packageIdentity
+            metaphorPackageIdentity: packageIdentity,
+            metaphorAIDocsPath: aiDocsPath
         )
 
         for file in try TemplateRenderer.files(for: context, catalog: catalog) {
