@@ -17,6 +17,10 @@
       "destination": "AGENTS.md"
     },
     {
+      "source": "common/mcp.json.template",
+      "destination": ".mcp.json"
+    },
+    {
       "source": "common/PROJECT_BRIEF.md.template",
       "destination": "PROJECT_BRIEF.md"
     },

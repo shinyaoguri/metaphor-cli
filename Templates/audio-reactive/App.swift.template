@@ -23,6 +23,8 @@ final class {{MODULE_NAME}}: Sketch {
         let bass = audio?.band(0) ?? 0
         let mids = audio?.band(1) ?? 0
         let highs = audio?.band(2) ?? 0
+        // AI 観測: probe("ラベル", 値) で snapshot の frame.json に値が出る。
+        // 例: probe("bass", bass)（metaphor mcp / watch 下で有効。詳細は AGENTS.md）
         let volume = audio?.volume ?? 0
 
         background(4, 5, 8)

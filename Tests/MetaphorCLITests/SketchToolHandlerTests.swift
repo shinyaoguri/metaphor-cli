@@ -7,20 +7,25 @@ final class SketchToolHandlerTests: XCTestCase {
         var outcome: BuildOutcome?
     }
 
-    private func makeHandler(_ box: Box, inputAvailable: Bool = true) -> SketchToolHandler {
+    private func makeHandler(
+        _ box: Box,
+        inputAvailable: Bool = true,
+        docsRoot: URL? = nil
+    ) -> SketchToolHandler {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("handler-\(ProcessInfo.processInfo.globallyUniqueString)")
         return SketchToolHandler(
             snapshotTool: ProbeSnapshotTool(sketchDirectory: dir, timeout: 1.0),
             forwardInput: { box.lines.append($0) },
             buildStatusProvider: { box.outcome },
-            inputAvailable: inputAvailable
+            inputAvailable: inputAvailable,
+            docsRootProvider: { docsRoot }
         )
     }
 
-    func testToolsListIncludesAllThree() {
+    func testToolsListIncludesAllTools() {
         let names = makeHandler(Box()).tools.map(\.name)
-        XCTAssertEqual(Set(names), ["snapshot", "input", "build_status"])
+        XCTAssertEqual(Set(names), ["snapshot", "input", "build_status", "api_reference"])
     }
 
     func testInputBuildsJSONLineAndForwards() throws {
@@ -117,5 +122,64 @@ final class SketchToolHandlerTests: XCTestCase {
 
         let joined = result.content.compactMap { $0["text"] as? String }.joined(separator: "\n")
         XCTAssertFalse(joined.contains("直近の swift build は失敗"))
+    }
+
+    // MARK: - api_reference
+
+    /// docs ルートに各ファイルを置いた一時ディレクトリを作る。
+    private func makeDocsRoot() throws -> URL {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("docs-\(ProcessInfo.processInfo.globallyUniqueString)")
+        let aiDir = root.appendingPathComponent("docs/ai")
+        try FileManager.default.createDirectory(at: aiDir, withIntermediateDirectories: true)
+        try "compact sketch guide".write(to: root.appendingPathComponent("llms-sketch.txt"), atomically: true, encoding: .utf8)
+        try "ALPHA api\nBETA api\ngamma api".write(to: root.appendingPathComponent("llms.txt"), atomically: true, encoding: .utf8)
+        try "examples index".write(to: aiDir.appendingPathComponent("examples-index.md"), atomically: true, encoding: .utf8)
+        return root
+    }
+
+    func testAPIReferenceDefaultsToSketchDoc() throws {
+        let root = try makeDocsRoot()
+        let result = makeHandler(Box(), docsRoot: root).call(name: "api_reference", arguments: [:])
+        XCTAssertFalse(result.isError)
+        XCTAssertEqual(result.content.first?["text"] as? String, "compact sketch guide")
+    }
+
+    func testAPIReferenceExamplesDoc() throws {
+        let root = try makeDocsRoot()
+        let result = makeHandler(Box(), docsRoot: root).call(name: "api_reference", arguments: ["doc": "examples"])
+        XCTAssertEqual(result.content.first?["text"] as? String, "examples index")
+    }
+
+    func testAPIReferenceGrepFiltersLines() throws {
+        let root = try makeDocsRoot()
+        let result = makeHandler(Box(), docsRoot: root)
+            .call(name: "api_reference", arguments: ["doc": "full", "grep": "api"])
+        let text = result.content.first?["text"] as? String
+        XCTAssertEqual(text, "ALPHA api\nBETA api\ngamma api")
+
+        let narrow = makeHandler(Box(), docsRoot: root)
+            .call(name: "api_reference", arguments: ["doc": "full", "grep": "alpha"])
+        XCTAssertEqual(narrow.content.first?["text"] as? String, "ALPHA api")  // 大小無視
+    }
+
+    func testAPIReferenceUnresolvedRoot() {
+        let result = makeHandler(Box(), docsRoot: nil).call(name: "api_reference", arguments: [:])
+        XCTAssertTrue(result.isError)
+        let text = result.content.first?["text"] as? String
+        XCTAssertTrue(text?.contains("解決できませんでした") == true)
+    }
+
+    func testAPIReferenceInvalidDoc() throws {
+        let root = try makeDocsRoot()
+        let result = makeHandler(Box(), docsRoot: root).call(name: "api_reference", arguments: ["doc": "nope"])
+        XCTAssertTrue(result.isError)
+    }
+
+    func testAPIReferenceMissingFile() {
+        // 存在するが llms-sketch.txt の無いディレクトリ。
+        let empty = URL(fileURLWithPath: NSTemporaryDirectory())
+        let result = makeHandler(Box(), docsRoot: empty).call(name: "api_reference", arguments: ["doc": "sketch"])
+        XCTAssertTrue(result.isError)
     }
 }
