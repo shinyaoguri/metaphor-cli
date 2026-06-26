@@ -5,6 +5,7 @@ import Foundation
 /// - `snapshot`（観測）: 現在フレームの PNG と内部状態を返す。
 /// - `input`（操作）: マウス/キーイベントを子スケッチの stdin へ転送する。
 /// - `build_status`: 直近の `swift build` の成否とエラーを返す。
+/// - `api_reference`: 依存先 metaphor ライブラリの API ドキュメントを返す。
 ///
 /// 副作用は注入されたクロージャ越しに行うのでユニットテスト可能。
 public final class SketchToolHandler: MCPToolHandling {
@@ -14,18 +15,30 @@ public final class SketchToolHandler: MCPToolHandling {
     /// 入力注入が可能か。共有セッションへアタッチした `metaphor mcp` では、子の stdin は
     /// watch 側が所有しており、かつ AI からの入力注入は対象外のため false。
     private let inputAvailable: Bool
+    /// 依存先 metaphor の docs ルート（`llms.txt` がある場所）を返す。`api_reference` で使う。
+    /// 呼び出しごとに評価され、初回ビルド後に出現する `.build/checkouts` も拾える。
+    private let docsRootProvider: () -> URL?
 
     public init(
         snapshotTool: ProbeSnapshotTool,
         forwardInput: @escaping (String) -> Void,
         buildStatusProvider: @escaping () -> BuildOutcome?,
-        inputAvailable: Bool = true
+        inputAvailable: Bool = true,
+        docsRootProvider: @escaping () -> URL? = { nil }
     ) {
         self.snapshotTool = snapshotTool
         self.forwardInput = forwardInput
         self.buildStatusProvider = buildStatusProvider
         self.inputAvailable = inputAvailable
+        self.docsRootProvider = docsRootProvider
     }
+
+    /// `api_reference` の `doc` 引数 → docs ルート相対のファイルパス。
+    static let docFiles: [String: String] = [
+        "sketch": "llms-sketch.txt",
+        "full": "llms.txt",
+        "examples": "docs/ai/examples-index.md",
+    ]
 
     /// 子スケッチが受け取る入力イベント種別（stdin JSON Lines の `t`）。
     private static let inputTypes = [
@@ -79,6 +92,26 @@ public final class SketchToolHandler: MCPToolHandling {
                     + "ソースを編集した後に、その編集がコンパイルできたかの確認に使う。",
                 inputSchema: ["type": "object", "properties": [String: Any]()]
             ),
+            MCPToolDefinition(
+                name: "api_reference",
+                description: "依存先 metaphor ライブラリの API ドキュメントを返す。"
+                    + "新しい API を使う前に必ず参照する。doc=sketch は簡潔な作法ガイド、"
+                    + "doc=full は全 API リファレンス、doc=examples は近傍のサンプル索引。",
+                inputSchema: [
+                    "type": "object",
+                    "properties": [
+                        "doc": [
+                            "type": "string",
+                            "enum": ["sketch", "full", "examples"],
+                            "description": "sketch=作法ガイド(既定) / full=全API / examples=サンプル索引。",
+                        ],
+                        "grep": [
+                            "type": "string",
+                            "description": "指定すると一致行のみ返す（大小無視）。full の全文を避けたいとき用。",
+                        ],
+                    ],
+                ]
+            ),
         ]
     }
 
@@ -92,6 +125,8 @@ public final class SketchToolHandler: MCPToolHandling {
             return handleInput(arguments)
         case "build_status":
             return handleBuildStatus()
+        case "api_reference":
+            return handleAPIReference(arguments)
         default:
             return .text("unknown tool: \(name)", isError: true)
         }
@@ -164,5 +199,41 @@ public final class SketchToolHandler: MCPToolHandling {
             content: [["type": "text", "text": head + body]],
             isError: !outcome.succeeded
         )
+    }
+
+    // MARK: - api_reference
+
+    private func handleAPIReference(_ arguments: [String: Any]) -> MCPToolResult {
+        let doc = (arguments["doc"] as? String) ?? "sketch"
+        guard let relative = Self.docFiles[doc] else {
+            let kinds = Self.docFiles.keys.sorted().joined(separator: ", ")
+            return .text("api_reference: 'doc' は \(kinds) のいずれかにしてください。", isError: true)
+        }
+        guard let root = docsRootProvider() else {
+            return .text(
+                "api_reference: metaphor ライブラリの場所を解決できませんでした。"
+                    + "スケッチを一度 `swift build` してから再試行するか、Package.swift の metaphor 依存を確認してください。",
+                isError: true
+            )
+        }
+        let fileURL = root.appendingPathComponent(relative)
+        guard let contents = try? String(contentsOf: fileURL, encoding: .utf8) else {
+            return .text(
+                "api_reference: \(relative) が見つかりません (\(root.path))。"
+                    + "ライブラリ側で `make llms-txt` / `make examples-index` を実行してください。",
+                isError: true
+            )
+        }
+
+        guard let needle = arguments["grep"] as? String, !needle.isEmpty else {
+            return .text(contents)
+        }
+        let matched = contents
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { $0.range(of: needle, options: .caseInsensitive) != nil }
+        if matched.isEmpty {
+            return .text("api_reference(\(doc)) grep \"\(needle)\": 一致する行はありません。")
+        }
+        return .text(matched.joined(separator: "\n"))
     }
 }

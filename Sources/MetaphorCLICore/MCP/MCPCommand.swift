@@ -48,6 +48,11 @@ public struct MCPCommand {
         // 子の stdin パイプが閉じても SIGPIPE で死なないように。
         installSIGPIPEIgnore()
 
+        // api_reference 用: 依存先 metaphor の docs ルートを呼び出しごとに解決する
+        // （初回ビルド後に出現する .build/checkouts も拾えるよう遅延評価）。
+        let docsLocator = MetaphorDocsLocator()
+        let docsRootProvider: () -> URL? = { docsLocator.resolve(sketchDirectory: directory) }
+
         let handler: SketchToolHandler
 
         if let manifest = SharedSession.liveManifest(for: directory) {
@@ -65,7 +70,8 @@ public struct MCPCommand {
                 snapshotTool: ProbeSnapshotTool(sketchDirectory: directory),
                 forwardInput: { _ in },   // 共有セッションでは AI 入力注入は対象外（操作はコード編集）
                 buildStatusProvider: { SharedSession.readBuildStatus(for: directory) },
-                inputAvailable: false
+                inputAvailable: false,
+                docsRootProvider: docsRootProvider
             )
             console.writeError(
                 "[mcp] attached — 動作中の watch セッション (pid \(manifest.pid)) を観測します"
@@ -100,7 +106,8 @@ public struct MCPCommand {
             handler = SketchToolHandler(
                 snapshotTool: ProbeSnapshotTool(sketchDirectory: directory),
                 forwardInput: { [weak session] line in session?.forwardInput(line) },
-                buildStatusProvider: { [weak session] in session?.lastBuildOutcome }
+                buildStatusProvider: { [weak session] in session?.lastBuildOutcome },
+                docsRootProvider: docsRootProvider
             )
             // server.run() の後始末。単独モードのみ子を止める。
             defer { session.stop() }
@@ -151,9 +158,10 @@ public struct MCPCommand {
     起動し、stdin/stdout で MCP(JSON-RPC/stdio) を喋る。
 
     Tools:
-      snapshot      現在フレームの PNG と内部状態(frame.json)を返す
-      input         マウス/キー入力を動作中のスケッチへ送る
-      build_status  直近の `swift build` の成否・エラーを返す
+      snapshot       現在フレームの PNG と内部状態(frame.json)を返す
+      input          マウス/キー入力を動作中のスケッチへ送る
+      build_status   直近の `swift build` の成否・エラーを返す
+      api_reference  依存先 metaphor の API ドキュメント(llms.txt 等)を返す
 
     引数を省略するとカレントディレクトリのスケッチを対象にする。
     """
