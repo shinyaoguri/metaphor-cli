@@ -369,6 +369,49 @@ release build を再インストール:
 make install
 ```
 
+### ローカル開発版と brew 版の切替（direnv 推奨）
+
+brew で入れた安定版（`/opt/homebrew/bin/metaphor`）と、このリポジトリのローカル
+ビルドを毎回 `make install` / `make uninstall` せずに行き来したい場合は、
+[direnv](https://direnv.net/) を使う。リポジトリには `.envrc` が同梱されており、
+**このディレクトリ配下にいる間だけ** ローカルビルドを PATH 前方に差し込み、外に出れば
+自動で brew 版に戻る。
+
+ビルド成果物は `Syphon.framework` が隣接し `@loader_path` で解決されるため、
+`make install` のような rpath 付与・再署名なしでライブビューア（`watch --viewer`）も動く。
+
+初回セットアップ（一度だけ）:
+
+```bash
+brew install direnv
+# シェルにフックを追加（zsh の場合）。bash/fish は direnv 公式手順を参照。
+echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc
+exec $SHELL              # 新しいシェルを起動してフックを反映
+
+cd ~/Repos/metaphor-cli
+direnv allow             # 同梱の .envrc を許可（初回のみ）
+swift build              # .build/debug/metaphor を生成
+```
+
+以降の開発ループ:
+
+```bash
+cd ~/Repos/metaphor-cli  # → 自動でローカル開発版に切替
+swift build              # 変更を反映（次の metaphor 実行で即有効）
+metaphor watch ...       # .build/debug/metaphor が動く
+
+cd ~                     # → 自動で brew 版に戻る
+```
+
+- どちらが効いているか: `metaphor --version`。`-NN-gHASH` 付き＝開発版、`0.1.1`
+  のようなクリーンなタグのみ＝brew 版。
+- 既定は debug ビルド。release で確認したいときは `swift build -c release` 後に
+  `METAPHOR_BUILD=release direnv allow`。
+- `.build/debug` が未ビルドなら自動で brew 版にフォールバックする。
+- direnv を使う場合 `make install` は不要。過去に `~/.local/bin/metaphor` を入れて
+  いたら `make uninstall` で消しておくと混乱がない（direnv の方が常に優先されるため
+  残っていても実害はない）。
+
 ## Templates
 
 テンプレートは Swift コード内の巨大な文字列ではなく、`Templates/` 配下のファイルとして管理します。
