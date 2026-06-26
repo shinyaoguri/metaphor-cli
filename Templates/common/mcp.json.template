@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "metaphor": { "type": "stdio", "command": "metaphor", "args": ["mcp", "."] }
+  }
+}

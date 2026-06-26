@@ -107,19 +107,25 @@ public struct TemplateContext {
     public let template: ProjectTemplate
     public let metaphorDependency: String
     public let metaphorPackageIdentity: String
+    /// 依存先 metaphor の AI ドキュメント（`llms.txt` 等）がある場所。AGENTS.md の
+    /// フォールバック導線に埋め込む。ローカル checkout は絶対パス、リモート版は
+    /// 初回ビルド後に現れる `.build/checkouts/metaphor`。
+    public let metaphorAIDocsPath: String
 
     public init(
         projectName: String,
         moduleName: String,
         template: ProjectTemplate,
         metaphorDependency: String,
-        metaphorPackageIdentity: String
+        metaphorPackageIdentity: String,
+        metaphorAIDocsPath: String
     ) {
         self.projectName = projectName
         self.moduleName = moduleName
         self.template = template
         self.metaphorDependency = metaphorDependency
         self.metaphorPackageIdentity = metaphorPackageIdentity
+        self.metaphorAIDocsPath = metaphorAIDocsPath
     }
 }
 
@@ -184,6 +190,7 @@ public enum TemplateRenderer {
             "METAPHOR_DEPENDENCY": context.metaphorDependency,
             "METAPHOR_PACKAGE_IDENTITY": context.metaphorPackageIdentity,
             "METAPHOR_PACKAGE_IDENTITY_SWIFT": context.metaphorPackageIdentity.swiftLiteralEscaped,
+            "METAPHOR_AI_DOCS_PATH": context.metaphorAIDocsPath,
         ]
     }
 
