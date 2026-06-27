@@ -40,7 +40,9 @@ public final class GitHubReleaseService: ReleaseServicing {
     }
 
     public func latestRelease(owner: String, repo: String) throws -> GitHubRelease {
-        let url = URL(string: "https://api.github.com/repos/\(owner)/\(repo)/releases/latest")!
+        guard let url = URL(string: "https://api.github.com/repos/\(owner)/\(repo)/releases/latest") else {
+            throw CLIError("不正な GitHub API URL (owner=\(owner), repo=\(repo))")
+        }
         let data = try httpClient.get(url)
         return try JSONDecoder().decode(GitHubRelease.self, from: data)
     }

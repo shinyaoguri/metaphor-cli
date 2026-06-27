@@ -7,10 +7,20 @@ INSTALL_BIN := $(BINDIR)/$(PRODUCT)
 FRAMEWORKDIR := $(SHAREDIR)/Frameworks
 BUILT_FRAMEWORK := .build/$(BUILD_CONFIG)/Syphon.framework
 
-.PHONY: build release test install uninstall clean doctor
+.PHONY: build release test install uninstall clean doctor hooks contract
 
 build:
 	swift build
+
+# Install git hooks (pre-push cross-repo contract check)
+hooks:
+	@echo "Installing git hooks (core.hooksPath=scripts/hooks)..."
+	@git config core.hooksPath scripts/hooks
+
+# Run the cross-repo contract checks (token presence + CONTRACT.md identity)
+contract:
+	@./scripts/check-contract.sh
+	@./scripts/check-contract-identity.sh
 
 release:
 	swift build -c release
