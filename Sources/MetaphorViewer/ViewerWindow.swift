@@ -2,6 +2,7 @@ import AppKit
 import MetalKit
 import Metal
 import MetaphorCLICore
+import QuartzCore
 
 /// ライブビューア窓が今どの段階にいるかを表す。フレームが届く前の「真っ黒な窓」を
 /// 解消し、何が起きているか（ビルド中／失敗／起動待ち）を窓自身に表示するために使う。
@@ -463,12 +464,78 @@ private struct OutEvent: Encodable {
 
 // MARK: - Status overlays
 
-/// フレーム未取得時に窓全体を覆うローディング/エラー表示。中央にスピナー（または警告
-/// アイコン）とタイトル・詳細を縦に並べる。装飾専用なのでヒットテストは透過させる。
+/// アクセントカラー（スピナー）。落ち着いた水色系。
+private let statusAccentColor = NSColor(calibratedRed: 0.45, green: 0.72, blue: 1.0, alpha: 1.0)
+
+/// 回転する弧で「処理中」を示す自前スピナー。`NSProgressIndicator` よりも大きく・
+/// アクセント色で、CoreAnimation の無限回転アニメーションで滑らかに動く。ビルドは
+/// バックグラウンドキューで走りメインスレッドは空くため、処理中もアニメーションは止まらない。
+private final class SpinnerView: NSView {
+    private let track = CAShapeLayer()
+    private let arc = CAShapeLayer()
+    private let diameter: CGFloat
+    private let lineWidth: CGFloat
+
+    init(diameter: CGFloat, lineWidth: CGFloat, color: NSColor) {
+        self.diameter = diameter
+        self.lineWidth = lineWidth
+        super.init(frame: NSRect(x: 0, y: 0, width: diameter, height: diameter))
+        wantsLayer = true
+        layer?.masksToBounds = false
+
+        // 線幅ぶん内側に描く円弧パス。
+        let inset = CGRect(
+            x: lineWidth / 2, y: lineWidth / 2,
+            width: diameter - lineWidth, height: diameter - lineWidth
+        )
+        let path = CGPath(ellipseIn: inset, transform: nil)
+
+        for shape in [track, arc] {
+            shape.path = path
+            shape.fillColor = NSColor.clear.cgColor
+            shape.lineWidth = lineWidth
+            // 中心回りに回すため、bounds は自サイズ・position は中心に置く
+            //（既定 anchorPoint = (0.5, 0.5)）。
+            shape.bounds = CGRect(x: 0, y: 0, width: diameter, height: diameter)
+            shape.position = CGPoint(x: diameter / 2, y: diameter / 2)
+            layer?.addSublayer(shape)
+        }
+        // 背景のうっすらした円（残り 1 周）。
+        track.strokeColor = color.withAlphaComponent(0.16).cgColor
+        // 前景の明るい弧（約 3/4 周）。これが回る。
+        arc.strokeColor = color.cgColor
+        arc.lineCap = .round
+        arc.strokeStart = 0
+        arc.strokeEnd = 0.72
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var intrinsicContentSize: NSSize { NSSize(width: diameter, height: diameter) }
+
+    /// 無限回転を開始する（既に回っていれば何もしない）。
+    func startAnimating() {
+        guard arc.animation(forKey: "spin") == nil else { return }
+        let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+        spin.fromValue = 0
+        spin.toValue = -Double.pi * 2  // 時計回り
+        spin.duration = 0.9
+        spin.repeatCount = .infinity
+        spin.isRemovedOnCompletion = false
+        arc.add(spin, forKey: "spin")
+    }
+
+    func stopAnimating() { arc.removeAnimation(forKey: "spin") }
+}
+
+/// フレーム未取得時に窓全体を覆うローディング/エラー表示。中央のカードに、回転スピナー
+/// （または警告アイコン）とタイトル・詳細を縦に並べる。装飾専用なのでヒットテストは透過。
 private final class StatusOverlayView: NSView {
     enum Mode { case loading, failed }
 
-    private let spinner = NSProgressIndicator()
+    private let card = NSView()
+    private let spinner = SpinnerView(diameter: 46, lineWidth: 3.5, color: statusAccentColor)
     private let icon = NSImageView()
     private let titleLabel = StatusOverlayView.makeLabel(size: 15, weight: .semibold, color: .white)
     private let detailLabel = StatusOverlayView.makeLabel(size: 12, weight: .regular, color: NSColor.white.withAlphaComponent(0.7))
@@ -476,28 +543,38 @@ private final class StatusOverlayView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        // 真っ黒ではなく、ほんのり背景を残した暗幕にする（窓が生きていると分かる）。
-        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.82).cgColor
+        // 全体を暗幕で覆い、中央に少し明るいカードを浮かせる。
+        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.78).cgColor
 
-        spinner.style = .spinning
-        spinner.isIndeterminate = true
-        spinner.controlSize = .regular
+        card.wantsLayer = true
+        card.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.06).cgColor
+        card.layer?.cornerRadius = 16
+        card.layer?.borderWidth = 1
+        card.layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
+        card.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(card)
 
         icon.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: "ビルド失敗")
         icon.contentTintColor = .systemOrange
-        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 26, weight: .semibold)
+        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 30, weight: .semibold)
         icon.isHidden = true
 
         let stack = NSStackView(views: [spinner, icon, titleLabel, detailLabel])
         stack.orientation = .vertical
         stack.alignment = .centerX
-        stack.spacing = 10
+        stack.spacing = 12
+        stack.edgeInsets = NSEdgeInsets(top: 26, left: 34, bottom: 26, right: 34)
         stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
+        card.addSubview(stack)
+
         NSLayoutConstraint.activate([
-            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            detailLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 420),
+            card.centerXAnchor.constraint(equalTo: centerXAnchor),
+            card.centerYAnchor.constraint(equalTo: centerYAnchor),
+            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: card.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+            detailLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 360),
         ])
     }
 
@@ -512,9 +589,9 @@ private final class StatusOverlayView: NSView {
         case .loading:
             icon.isHidden = true
             spinner.isHidden = false
-            spinner.startAnimation(nil)
+            spinner.startAnimating()
         case .failed:
-            spinner.stopAnimation(nil)
+            spinner.stopAnimating()
             spinner.isHidden = true
             icon.isHidden = false
         }
@@ -536,7 +613,7 @@ private final class StatusOverlayView: NSView {
 
 /// フレーム取得済みのリロード中などに、直前の絵を覆わず右下へ小さく出す状態バッジ。
 private final class StatusBadgeView: NSView {
-    private let spinner = NSProgressIndicator()
+    private let spinner = SpinnerView(diameter: 13, lineWidth: 2, color: .white)
     private let label = NSTextField(labelWithString: "")
     private let stack = NSStackView()
 
@@ -545,10 +622,6 @@ private final class StatusBadgeView: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.withAlphaComponent(0.6).cgColor
         layer?.cornerRadius = 6
-
-        spinner.style = .spinning
-        spinner.isIndeterminate = true
-        spinner.controlSize = .small
 
         label.font = .systemFont(ofSize: 11, weight: .medium)
         label.textColor = .white
@@ -578,7 +651,7 @@ private final class StatusBadgeView: NSView {
     func configure(spinning: Bool, text: String) {
         label.stringValue = text
         spinner.isHidden = !spinning
-        if spinning { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
+        if spinning { spinner.startAnimating() } else { spinner.stopAnimating() }
     }
 
     /// `fittingSize` 計算前にレイアウトを確定させる（右下配置の幅/高さを正しく得るため）。
