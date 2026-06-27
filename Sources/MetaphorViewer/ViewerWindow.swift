@@ -467,11 +467,10 @@ private struct OutEvent: Encodable {
 /// アクセントカラー（スピナー）。落ち着いた水色系。
 private let statusAccentColor = NSColor(calibratedRed: 0.45, green: 0.72, blue: 1.0, alpha: 1.0)
 
-/// 回転する弧で「処理中」を示す自前スピナー。`NSProgressIndicator` よりも大きく・
-/// アクセント色で、CoreAnimation の無限回転アニメーションで滑らかに動く。ビルドは
-/// バックグラウンドキューで走りメインスレッドは空くため、処理中もアニメーションは止まらない。
+/// 回転する細い弧で「処理中」を示す自前スピナー。背景トラックの無い単一の弧だけの
+/// ミニマルな見た目。CoreAnimation の無限回転で滑らかに動く。ビルドはバックグラウンド
+/// キューで走りメインスレッドは空くため、処理中もアニメーションは止まらない。
 private final class SpinnerView: NSView {
-    private let track = CAShapeLayer()
     private let arc = CAShapeLayer()
     private let diameter: CGFloat
     private let lineWidth: CGFloat
@@ -488,25 +487,19 @@ private final class SpinnerView: NSView {
             x: lineWidth / 2, y: lineWidth / 2,
             width: diameter - lineWidth, height: diameter - lineWidth
         )
-        let path = CGPath(ellipseIn: inset, transform: nil)
-
-        for shape in [track, arc] {
-            shape.path = path
-            shape.fillColor = NSColor.clear.cgColor
-            shape.lineWidth = lineWidth
-            // 中心回りに回すため、bounds は自サイズ・position は中心に置く
-            //（既定 anchorPoint = (0.5, 0.5)）。
-            shape.bounds = CGRect(x: 0, y: 0, width: diameter, height: diameter)
-            shape.position = CGPoint(x: diameter / 2, y: diameter / 2)
-            layer?.addSublayer(shape)
-        }
-        // 背景のうっすらした円（残り 1 周）。
-        track.strokeColor = color.withAlphaComponent(0.16).cgColor
-        // 前景の明るい弧（約 3/4 周）。これが回る。
+        arc.path = CGPath(ellipseIn: inset, transform: nil)
+        arc.fillColor = NSColor.clear.cgColor
+        arc.lineWidth = lineWidth
         arc.strokeColor = color.cgColor
         arc.lineCap = .round
+        // 円のおよそ 1/4 だけ描く短い弧（ミニマル）。これが回る。
         arc.strokeStart = 0
-        arc.strokeEnd = 0.72
+        arc.strokeEnd = 0.26
+        // 中心回りに回すため、bounds は自サイズ・position は中心に置く
+        //（既定 anchorPoint = (0.5, 0.5)）。
+        arc.bounds = CGRect(x: 0, y: 0, width: diameter, height: diameter)
+        arc.position = CGPoint(x: diameter / 2, y: diameter / 2)
+        layer?.addSublayer(arc)
     }
 
     @available(*, unavailable)
@@ -529,51 +522,39 @@ private final class SpinnerView: NSView {
     func stopAnimating() { arc.removeAnimation(forKey: "spin") }
 }
 
-/// フレーム未取得時に窓全体を覆うローディング/エラー表示。中央のカードに、回転スピナー
-/// （または警告アイコン）とタイトル・詳細を縦に並べる。装飾専用なのでヒットテストは透過。
+/// フレーム未取得時に窓全体を覆うローディング/エラー表示。暗幕の中央に、回転スピナー
+/// （または警告アイコン）とタイトル・詳細を縦に並べるだけのフラットな構成。装飾専用
+/// なのでヒットテストは透過。
 private final class StatusOverlayView: NSView {
     enum Mode { case loading, failed }
 
-    private let card = NSView()
-    private let spinner = SpinnerView(diameter: 46, lineWidth: 3.5, color: statusAccentColor)
+    private let spinner = SpinnerView(diameter: 38, lineWidth: 2.5, color: statusAccentColor)
     private let icon = NSImageView()
-    private let titleLabel = StatusOverlayView.makeLabel(size: 15, weight: .semibold, color: .white)
-    private let detailLabel = StatusOverlayView.makeLabel(size: 12, weight: .regular, color: NSColor.white.withAlphaComponent(0.7))
+    private let titleLabel = StatusOverlayView.makeLabel(size: 14, weight: .medium, color: .white)
+    private let detailLabel = StatusOverlayView.makeLabel(size: 12, weight: .regular, color: NSColor.white.withAlphaComponent(0.55))
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        // 全体を暗幕で覆い、中央に少し明るいカードを浮かせる。
-        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.78).cgColor
+        // 全体を暗幕で覆うだけ（枠やカードは出さない）。
+        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.8).cgColor
 
-        card.wantsLayer = true
-        card.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.06).cgColor
-        card.layer?.cornerRadius = 16
-        card.layer?.borderWidth = 1
-        card.layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
-        card.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(card)
-
-        icon.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: "ビルド失敗")
+        icon.image = NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: "ビルド失敗")
         icon.contentTintColor = .systemOrange
-        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 30, weight: .semibold)
+        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 30, weight: .regular)
         icon.isHidden = true
 
         let stack = NSStackView(views: [spinner, icon, titleLabel, detailLabel])
         stack.orientation = .vertical
         stack.alignment = .centerX
-        stack.spacing = 12
-        stack.edgeInsets = NSEdgeInsets(top: 26, left: 34, bottom: 26, right: 34)
+        stack.spacing = 16
+        stack.setCustomSpacing(8, after: titleLabel)
         stack.translatesAutoresizingMaskIntoConstraints = false
-        card.addSubview(stack)
+        addSubview(stack)
 
         NSLayoutConstraint.activate([
-            card.centerXAnchor.constraint(equalTo: centerXAnchor),
-            card.centerYAnchor.constraint(equalTo: centerYAnchor),
-            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: card.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
             detailLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 360),
         ])
     }
