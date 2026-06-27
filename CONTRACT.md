@@ -37,7 +37,7 @@
 | 1 | **Syphon.xcframework の Release pin**<br>URL `…/releases/download/<tag>/Syphon.xcframework.zip` + SHA256 checksum | `metaphor` が Release で発行（`release.yml`） | `metaphor-cli/Package.swift` の `binaryTarget` |
 | 2 | **環境変数**<br>`METAPHOR_VIEWER` / `METAPHOR_SYPHON_NAME` / `METAPHOR_FPS` / `METAPHOR_PROBE` | `metaphor` が読む（`SketchRunner.swift`） | `metaphor-cli` が設定（`ViewerWatch.swift` / `Watch.swift`） |
 | 3 | **stdin 入力イベント（JSON Lines）**<br>キー `t` の値 `mouseDown` `mouseUp` `mouseMove` `mouseDrag` `scroll` `keyDown` `keyUp`、フィールド `x` `y` `button` `code` `chars` `repeat` `dx` `dy` | `metaphor` が解析（`InputInjectionPlugin.swift`） | `metaphor-cli` が送出（`ViewerWindow.swift`） |
-| 4 | **Probe ファイル契約**<br>`.metaphor/probe/request.json`（リクエスト）/ `.metaphor/probe/current/frame.{png,json}`（出力）と `frame.json` スキーマ | `metaphor`（`MetaphorProbeConfig.swift` / `ProbeFrameMetadata.swift`） | AI エージェント・ツール（必要なら `metaphor-cli`） |
+| 4 | **Probe ファイル契約**<br>`.metaphor/probe/request.json`（リクエスト）/ `.metaphor/probe/current/frame.{png,json}`（単一フレーム出力）/ `.metaphor/probe/current/sequence/`（連続フレーム出力）と `frame.json` / `sequence.json` スキーマ、`ProbeRequest` のフィールド（`id` / `label` / `scale` / `frames` / `every`） | `metaphor`（`MetaphorProbeConfig.swift` / `ProbeFrameMetadata.swift` / `ProbeSequenceManifest.swift` / `ProbeRequest.swift`） | AI エージェント・ツール（必要なら `metaphor-cli`） |
 | 5 | **Syphon サーバー名 / headless 挙動**<br>`METAPHOR_VIEWER=1` で `METAPHOR_SYPHON_NAME` のサーバーへ publish | `metaphor` headless モード（`SketchRunner.swift`） | `metaphor-cli`（`SyphonFrameSource.swift`） |
 | 6 | **AI ドキュメント生成物のパス/ファイル名**<br>`llms.txt` / `llms-sketch.txt` / `docs/ai/examples-index.{md,json}` | `metaphor` が生成（`make llms-txt` / `make examples-index`、リポジトリにコミット） | `metaphor-cli` の MCP `api_reference` ツール（`MetaphorDocsLocator.swift` / `SketchToolHandler.swift`） |
 
@@ -57,6 +57,25 @@
   コード変更は不要（将来 cli が個別フィールドを解釈し始めたら本表に追記する）。
 - キーのリネーム／削除／型変更は **破壊的変更**。`schemaVersion` を上げ、両リポジトリの
   本節を同時に更新し、`metaphor-cli` 側に対応 Issue/PR を立てること。
+
+### 連続フレーム出力 `sequence/`（契約点 4 の補足）
+
+`request.json` に `frames >= 2` を指定すると、単一フレームの `current/frame.{png,json}`
+ではなく `current/sequence/` 以下に連続フレーム列を書き出します（時間軸の観測用）。
+
+- 出力レイアウト: `current/sequence/frame.NNNN.{png,json}`（0 始まり 4 桁ゼロ詰め）/
+  `current/sequence/contact_sheet.png`（一覧モンタージュ）/ `current/sequence/sequence.json`（manifest）。
+- `ProbeRequest` の任意フィールド: `frames`（採取枚数、`<=1` で従来の単一フレーム）/
+  `every`（採取間隔ストライド、既定 1）。未知フィールドは無視する（consumer 規約）。
+- `sequence.json` は独自の `schemaVersion`（現行 = 1）を持ち、`frame.json` と同じく
+  **additive・前方互換**を原則とする。`frameCount` / `requestedFrames` / `every` / `size` /
+  `contactSheet?` / `warnings[]` / `frames[]{index,file,metadata,frame,time}` を持つ。
+- **完了規約**: シーケンス出力のうち `sequence.json` を**最後に**原子的に書き出す。
+  consumer は「`sequence.json` が存在し、`id` がリクエストと一致し、`frames.count == frameCount`」で
+  ready と判定する（単一フレームの `frame.json` mtime ポーリングと同型）。
+- **新規パスの追加**である点に注意（additive だが、`current/frame.{png,json}` は不変）。
+  `metaphor-cli` の MCP サーバはこれらを露出する `capture_sequence` ツールを持つ想定
+  （consumer 側の追加。トークン自体は producer = metaphor が定義）。
 
 ### AI ドキュメント供給（契約点 6 の補足）
 
@@ -101,7 +120,7 @@ pin 形式・AI ドキュメントのパス/ファイル名）を変更・追加
 ### metaphor
 - `Sources/MetaphorCore/Sketch/SketchRunner.swift` — 環境変数読み取り・headless
 - `Sources/MetaphorCore/Input/InputInjectionPlugin.swift` — stdin JSON Lines 解析
-- `Sources/MetaphorCore/Probe/MetaphorProbeConfig.swift` / `ProbeFrameMetadata.swift` — Probe 契約
+- `Sources/MetaphorCore/Probe/MetaphorProbeConfig.swift` / `ProbeFrameMetadata.swift` / `ProbeRequest.swift` / `ProbeSequenceManifest.swift` — Probe 契約（単一フレーム + 連続フレーム）
 - `llms.txt` / `llms-sketch.txt` / `docs/ai/examples-index.{md,json}` — AI ドキュメント生成物（契約点 6）
 - `.github/workflows/release.yml` — Syphon ビルド・Release・cli への dispatch
 
