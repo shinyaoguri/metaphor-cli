@@ -467,39 +467,42 @@ private struct OutEvent: Encodable {
 /// アクセントカラー（スピナー）。落ち着いた水色系。
 private let statusAccentColor = NSColor(calibratedRed: 0.45, green: 0.72, blue: 1.0, alpha: 1.0)
 
-/// 回転する細い弧で「処理中」を示す自前スピナー。背景トラックの無い単一の弧だけの
-/// ミニマルな見た目。CoreAnimation の無限回転で滑らかに動く。ビルドはバックグラウンド
-/// キューで走りメインスレッドは空くため、処理中もアニメーションは止まらない。
+/// ゆっくり脈動しながら回る有機的なブロブ（不定形の塊）で「処理中」を示す自前スピナー。
+/// 輪郭の半径を複数の正弦波の和でゆらすことで、生きているように形が変わり続ける。
+/// 形の変形（path のキーフレーム）と全体の回転を CoreAnimation で無限ループさせる。
+/// ビルドはバックグラウンドキューで走りメインスレッドは空くため、処理中も止まらない。
 private final class SpinnerView: NSView {
-    private let arc = CAShapeLayer()
+    private let blob = CALayer()        // 回転する入れ物
+    private let gradient = CAGradientLayer()
+    private let mask = CAShapeLayer()   // ブロブ形のマスク（これを変形させる）
     private let diameter: CGFloat
-    private let lineWidth: CGFloat
+
+    /// 形のキーフレーム数（多いほど滑らか）。
+    private static let morphFrames = 24
 
     init(diameter: CGFloat, lineWidth: CGFloat, color: NSColor) {
         self.diameter = diameter
-        self.lineWidth = lineWidth
         super.init(frame: NSRect(x: 0, y: 0, width: diameter, height: diameter))
         wantsLayer = true
         layer?.masksToBounds = false
 
-        // 線幅ぶん内側に描く円弧パス。
-        let inset = CGRect(
-            x: lineWidth / 2, y: lineWidth / 2,
-            width: diameter - lineWidth, height: diameter - lineWidth
-        )
-        arc.path = CGPath(ellipseIn: inset, transform: nil)
-        arc.fillColor = NSColor.clear.cgColor
-        arc.lineWidth = lineWidth
-        arc.strokeColor = color.cgColor
-        arc.lineCap = .round
-        // 円のおよそ 1/4 だけ描く短い弧（ミニマル）。これが回る。
-        arc.strokeStart = 0
-        arc.strokeEnd = 0.26
-        // 中心回りに回すため、bounds は自サイズ・position は中心に置く
-        //（既定 anchorPoint = (0.5, 0.5)）。
-        arc.bounds = CGRect(x: 0, y: 0, width: diameter, height: diameter)
-        arc.position = CGPoint(x: diameter / 2, y: diameter / 2)
-        layer?.addSublayer(arc)
+        // 回転する入れ物（中心回りに回すため bounds=自サイズ・position=中心）。
+        blob.bounds = CGRect(x: 0, y: 0, width: diameter, height: diameter)
+        blob.position = CGPoint(x: diameter / 2, y: diameter / 2)
+
+        // やわらかい陰影が出るよう、アクセント色の縦グラデーションをブロブ形で切り抜く。
+        let light = SpinnerView.lighten(color, by: 0.18)
+        gradient.frame = blob.bounds
+        gradient.colors = [light.cgColor, color.cgColor]
+        gradient.startPoint = CGPoint(x: 0.5, y: 0)
+        gradient.endPoint = CGPoint(x: 0.5, y: 1)
+
+        mask.path = SpinnerView.blobPath(diameter: diameter, t: 0)
+        mask.fillColor = NSColor.black.cgColor  // マスクは不透明部分だけ通す
+        gradient.mask = mask
+
+        blob.addSublayer(gradient)
+        layer?.addSublayer(blob)
     }
 
     @available(*, unavailable)
@@ -507,19 +510,67 @@ private final class SpinnerView: NSView {
 
     override var intrinsicContentSize: NSSize { NSSize(width: diameter, height: diameter) }
 
-    /// 無限回転を開始する（既に回っていれば何もしない）。
+    /// 変形と回転を開始する（既に動いていれば何もしない）。
     func startAnimating() {
-        guard arc.animation(forKey: "spin") == nil else { return }
+        guard mask.animation(forKey: "morph") == nil else { return }
+
+        // 半径のゆらぎの位相 t を 0→2π まで動かすと元に戻るので、継ぎ目なくループする。
+        var paths: [CGPath] = []
+        for k in 0...SpinnerView.morphFrames {
+            let t = CGFloat(k) / CGFloat(SpinnerView.morphFrames) * 2 * .pi
+            paths.append(SpinnerView.blobPath(diameter: diameter, t: t))
+        }
+        let morph = CAKeyframeAnimation(keyPath: "path")
+        morph.values = paths
+        morph.duration = 2.8
+        morph.repeatCount = .infinity
+        morph.isRemovedOnCompletion = false
+        mask.add(morph, forKey: "morph")
+
+        // 全体をゆっくり回す（変形とは別周期にして単調さを消す）。
         let spin = CABasicAnimation(keyPath: "transform.rotation.z")
         spin.fromValue = 0
-        spin.toValue = -Double.pi * 2  // 時計回り
-        spin.duration = 0.9
+        spin.toValue = Double.pi * 2
+        spin.duration = 9
         spin.repeatCount = .infinity
         spin.isRemovedOnCompletion = false
-        arc.add(spin, forKey: "spin")
+        blob.add(spin, forKey: "spin")
     }
 
-    func stopAnimating() { arc.removeAnimation(forKey: "spin") }
+    func stopAnimating() {
+        mask.removeAnimation(forKey: "morph")
+        blob.removeAnimation(forKey: "spin")
+    }
+
+    /// 中心からの半径を複数の正弦波の和でゆらした、滑らかな閉じたブロブ輪郭。
+    /// 位相 `t` を進めると形が変わり、`t = 2π` で `t = 0` に戻る。
+    private static func blobPath(diameter: CGFloat, t: CGFloat) -> CGPath {
+        let segments = 72
+        let center = diameter / 2
+        let base = diameter * 0.34
+        let path = CGMutablePath()
+        for i in 0...segments {
+            let theta = CGFloat(i) / CGFloat(segments) * 2 * .pi
+            // 周回数の異なる波を重ね、逆位相にも動かして有機的なゆらぎにする。
+            let wobble = 0.11 * sin(3 * theta + t) + 0.07 * sin(2 * theta + 1.7 - t)
+            let r = base * (1 + wobble)
+            let point = CGPoint(x: center + r * cos(theta), y: center + r * sin(theta))
+            if i == 0 { path.move(to: point) } else { path.addLine(to: point) }
+        }
+        path.closeSubpath()
+        return path
+    }
+
+    /// 色を白方向へ `amount`（0–1）混ぜて明るくする。
+    private static func lighten(_ color: NSColor, by amount: CGFloat) -> NSColor {
+        guard let c = color.usingColorSpace(.deviceRGB) else { return color }
+        return NSColor(
+            deviceRed: c.redComponent + (1 - c.redComponent) * amount,
+            green: c.greenComponent + (1 - c.greenComponent) * amount,
+            blue: c.blueComponent + (1 - c.blueComponent) * amount,
+            alpha: c.alphaComponent
+        )
+    }
 }
 
 /// フレーム未取得時に窓全体を覆うローディング/エラー表示。暗幕の中央に、回転スピナー
@@ -528,7 +579,7 @@ private final class SpinnerView: NSView {
 private final class StatusOverlayView: NSView {
     enum Mode { case loading, failed }
 
-    private let spinner = SpinnerView(diameter: 38, lineWidth: 2.5, color: statusAccentColor)
+    private let spinner = SpinnerView(diameter: 54, lineWidth: 2.5, color: statusAccentColor)
     private let icon = NSImageView()
     private let titleLabel = StatusOverlayView.makeLabel(size: 14, weight: .medium, color: .white)
     private let detailLabel = StatusOverlayView.makeLabel(size: 12, weight: .regular, color: NSColor.white.withAlphaComponent(0.55))
