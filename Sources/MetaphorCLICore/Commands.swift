@@ -37,6 +37,14 @@ public struct CommandLineTool {
                 releaseService: releaseService,
                 currentDirectory: currentDirectory
             ).run(arguments: commandArguments)
+        case "init":
+            // `init` is sugar for `new .`: initialize the current directory.
+            try NewCommand(
+                console: console,
+                processRunner: processRunner,
+                releaseService: releaseService,
+                currentDirectory: currentDirectory
+            ).run(arguments: ["."] + commandArguments)
         case "run":
             try RunCommand(
                 console: console,
@@ -84,6 +92,7 @@ public struct CommandLineTool {
 
     Usage:
       metaphor new <name> [--template 2d] [--metaphor-version 0.2.3]
+      metaphor init [--template 2d]
       metaphor run [swift-run-arguments...]
       metaphor watch [--no-viewer] [--syphon-name <name>] [swift-build/run-arguments...]
       metaphor mcp [sketch-dir]
@@ -94,6 +103,7 @@ public struct CommandLineTool {
 
     Commands:
       new       Create a new metaphor sketch package
+      init      Initialize a sketch in the current directory (alias for `new .`)
       run       Run the current Swift package via `swift run`
       watch     Live-reload the sketch in a viewer window (--no-viewer for the sketch's own window)
       mcp       Serve a local MCP server (snapshot/observe the sketch for AI agents)
@@ -137,8 +147,31 @@ public struct NewCommand {
             return
         }
 
-        guard let projectName = options.positionals.first else {
-            throw CLIError("Missing project name. Usage: metaphor new <name>", exitCode: 2)
+        // `metaphor new .` (and the `metaphor init` alias) initialize in place:
+        // the current directory becomes the project and its name is taken from
+        // the folder. Otherwise the positional names a child directory to create
+        // under the cwd (or `--path`).
+        let rawName = options.positionals.first
+        let inPlace = rawName == "." || rawName == "./"
+
+        let projectName: String
+        let projectURL: URL
+        if inPlace {
+            projectURL = currentDirectory.standardizedFileURL
+            projectName = projectURL.lastPathComponent
+            guard !projectName.isEmpty, projectName != "/" else {
+                throw CLIError("Could not derive a project name from the current directory.", exitCode: 2)
+            }
+        } else {
+            guard let name = rawName else {
+                throw CLIError("Missing project name. Usage: metaphor new <name>  (or `metaphor new .` to initialize the current directory)", exitCode: 2)
+            }
+            try validateProjectName(name)
+            projectName = name
+            let root = options.value("path")
+                .map { PathResolver.url(from: $0, relativeTo: currentDirectory) }
+                ?? currentDirectory
+            projectURL = root.appendingPathComponent(projectName, isDirectory: true)
         }
 
         let catalog = try TemplateCatalog.loadDefault()
@@ -147,14 +180,6 @@ public struct NewCommand {
             let names = catalog.templates.map(\.id).joined(separator: ", ")
             throw CLIError("Unknown template '\(templateName)'. Available templates: \(names)", exitCode: 2)
         }
-
-        let root = options.value("path")
-            .map { PathResolver.url(from: $0, relativeTo: currentDirectory) }
-            ?? currentDirectory
-        let projectURL = root.appendingPathComponent(projectName, isDirectory: true)
-        let force = options.flag("force")
-
-        try prepareDestination(projectURL, force: force)
 
         let metaphorDependency: String
         let packageIdentity: String
@@ -183,44 +208,113 @@ public struct NewCommand {
             metaphorAIDocsPath: aiDocsPath
         )
 
-        for file in try TemplateRenderer.files(for: context, catalog: catalog) {
-            try write(file, into: projectURL, overwrite: force)
+        // Render every file up front, before touching the filesystem, so a
+        // broken template fails cleanly without leaving a directory behind.
+        let files = try TemplateRenderer.files(for: context, catalog: catalog)
+
+        let force = options.flag("force")
+        let createdDirectory = try prepareDestination(projectURL, force: force, inPlace: inPlace)
+
+        do {
+            // Pre-flight: find every collision and refuse as a group *before*
+            // writing anything, so a half-generated project is never left behind.
+            if !force {
+                try assertNoCollisions(for: files, in: projectURL)
+            }
+            for file in files {
+                try write(file, into: projectURL, overwrite: force)
+            }
+            if options.flag("git") {
+                try initializeGitRepository(at: projectURL)
+            }
+        } catch {
+            // Roll back only a directory we created ourselves; never delete a
+            // pre-existing (e.g. in-place) directory or the user's own files.
+            if createdDirectory {
+                try? fileManager.removeItem(at: projectURL)
+            }
+            throw error
         }
 
-        if options.flag("git") {
-            try initializeGitRepository(at: projectURL)
-        }
-
+        // Lead with the metaphor-cli dev loop (live viewer + hot reload), which is
+        // the whole point of the tool; `metaphor run` is the one-shot alternative.
+        let devHint = "  metaphor watch        # live viewer + hot reload (one-shot: metaphor run)"
+        let nextSteps = inPlace ? devHint : "  cd \(projectURL.path)\n\(devHint)"
         console.write("""
-        Created \(projectName) using the \(template.rawValue) template.
+        Created \(projectName)\(inPlace ? " (in place)" : "") using the \(template.rawValue) template.
 
         Next:
-          cd \(projectURL.path)
-          swift run
+        \(nextSteps)
         """)
     }
 
-    private func prepareDestination(_ url: URL, force: Bool) throws {
+    /// Ensures `url` is a usable destination directory and returns whether this
+    /// call created it (so the caller can roll it back on a later failure).
+    private func prepareDestination(_ url: URL, force: Bool, inPlace: Bool) throws -> Bool {
         var isDirectory: ObjCBool = false
         let exists = fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory)
         if exists {
             guard isDirectory.boolValue else {
-                throw CLIError("Destination exists and is not a directory: \(url.path)")
+                throw CLIError("Destination exists but is not a directory: \(url.path)")
             }
 
-            let contents = try fileManager.contentsOfDirectory(atPath: url.path)
-            if !contents.isEmpty && !force {
-                throw CLIError("Destination is not empty: \(url.path). Use --force to write into it.")
+            // In-place init (`metaphor new .`) runs inside a directory that may
+            // already hold dotfiles like `.envrc`/`.git`, so the bulk emptiness
+            // gate would always trip. Skip it and let the pre-flight collision
+            // check refuse to clobber an existing project instead.
+            if !inPlace {
+                let contents = try fileManager.contentsOfDirectory(atPath: url.path)
+                if !contents.isEmpty && !force {
+                    throw CLIError("Destination is not empty: \(url.path). Use --force to write into it.")
+                }
             }
-        } else {
+            return false
+        }
+
+        do {
             try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+        } catch {
+            throw CLIError("Could not create project directory \(url.path): \(error.localizedDescription)")
+        }
+        return true
+    }
+
+    /// Refuses to overwrite existing files, reporting *all* collisions at once so
+    /// the user can resolve them in a single pass. Skipped when `--force` is set.
+    private func assertNoCollisions(for files: [GeneratedFile], in root: URL) throws {
+        let existing = files
+            .map { root.appendingPathComponent($0.path) }
+            .filter { fileManager.fileExists(atPath: $0.path) }
+        guard existing.isEmpty else {
+            let list = existing.map { "  \($0.path)" }.joined(separator: "\n")
+            throw CLIError("""
+            Refusing to overwrite \(existing.count) existing file(s):
+            \(list)
+
+            Pass --force to overwrite them, or remove/rename them first.
+            """)
+        }
+    }
+
+    /// Rejects path-like names so `new` only ever creates a single child
+    /// directory; a different location is chosen with `--path`.
+    private func validateProjectName(_ name: String) throws {
+        let isPathLike = name.isEmpty
+            || name == "."
+            || name == ".."
+            || name.contains("/")
+            || name.hasPrefix("~")
+        if isPathLike {
+            throw CLIError(
+                "Invalid project name '\(name)'. Use a single directory name (no '/', '..', or '~'). To create it elsewhere, add: --path <directory>",
+                exitCode: 2
+            )
         }
     }
 
     private func write(_ file: GeneratedFile, into root: URL, overwrite: Bool) throws {
         let destination = root.appendingPathComponent(file.path)
         let parent = destination.deletingLastPathComponent()
-        try fileManager.createDirectory(at: parent, withIntermediateDirectories: true)
 
         if fileManager.fileExists(atPath: destination.path) && !overwrite {
             throw CLIError("Refusing to overwrite existing file: \(destination.path)")
@@ -229,7 +323,13 @@ public struct NewCommand {
         guard let data = file.contents.data(using: .utf8) else {
             throw CLIError("Failed to encode \(file.path) as UTF-8")
         }
-        try data.write(to: destination, options: .atomic)
+
+        do {
+            try fileManager.createDirectory(at: parent, withIntermediateDirectories: true)
+            try data.write(to: destination, options: .atomic)
+        } catch {
+            throw CLIError("Could not write \(file.path): \(error.localizedDescription)")
+        }
     }
 
     private func initializeGitRepository(at url: URL) throws {
@@ -259,17 +359,19 @@ public struct NewCommand {
 
     public static let helpText = """
     Usage:
-      metaphor new <name> [options]
+      metaphor new <name> [options]      Create <name>/ under the current directory
+      metaphor new . [options]           Initialize the current directory (name taken from the folder)
+      metaphor init [options]            Alias for `metaphor new .`
 
     Options:
       --template <name>            Template: 2d, 3d, shader, live, audio-reactive, raytracing, syphon
-      --path <directory>           Parent directory for the new project
+      --path <directory>           Parent directory for the new project (ignored for in-place init)
       --metaphor-version <ver>     metaphor package version, default: latest release
       --metaphor-url <url>         metaphor package URL
       --metaphor-path <path>       Use a local metaphor checkout instead of a remote package
       --metaphor-package <name>    Package identity for the metaphor product, default: metaphor
       --git                       Run git init after generation
-      --force                     Write into an existing non-empty directory
+      --force                     Overwrite existing files in the destination
 
     Templates:
     \(ProjectTemplate.usageList)

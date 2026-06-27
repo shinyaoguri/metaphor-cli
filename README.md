@@ -186,6 +186,7 @@ metaphor run
 
 ```bash
 metaphor new <name>
+metaphor init
 metaphor run
 metaphor watch
 metaphor mcp
@@ -198,10 +199,21 @@ metaphor version
 ### `metaphor new`
 
 ```bash
-metaphor new MySketch
+metaphor new MySketch                  # カレント直下に MySketch/ を作成
 metaphor new MyScene --template 3d
 metaphor new LiveSet --template live
 metaphor new ShaderLab --template shader
+```
+
+すでにあるディレクトリの中で初期化したいときは、名前の代わりに `.` を渡します。
+プロジェクト名はそのフォルダ名から取られます（`test-meta/` → Package 名 `test-meta` /
+モジュール `TestMeta`）。`.envrc` や `.git` が既にあっても構いません（既存の生成物を
+上書きするときだけ `--force` が必要）。
+
+```bash
+mkdir test-meta && cd test-meta
+metaphor new .                         # = metaphor init
+metaphor init --template live          # init は `new .` のエイリアス
 ```
 
 ### `metaphor watch`
@@ -369,13 +381,21 @@ release build を再インストール:
 make install
 ```
 
-### ローカル開発版と brew 版の切替（direnv 推奨）
+### プロジェクト作成に使う metaphor を切り替える（ローカル開発版 / brew 版、direnv 推奨）
 
-brew で入れた安定版（`/opt/homebrew/bin/metaphor`）と、このリポジトリのローカル
-ビルドを毎回 `make install` / `make uninstall` せずに行き来したい場合は、
-[direnv](https://direnv.net/) を使う。リポジトリには `.envrc` が同梱されており、
-**このディレクトリ配下にいる間だけ** ローカルビルドを PATH 前方に差し込み、外に出れば
-自動で brew 版に戻る。
+`metaphor new` でプロジェクトを作るとき、それを実行するのが **brew で入れた安定版**
+（`/opt/homebrew/bin/metaphor`）なのか、**このリポジトリのローカルビルド**
+（`.build/debug/metaphor`）なのかは、`PATH` 上でどちらが先に見つかるかで決まります。
+毎回 `make install` / `make uninstall` で切り替えるのは面倒なので、
+[direnv](https://direnv.net/) で自動化します。リポジトリには `.envrc` が同梱されており、
+**このディレクトリ配下にいる間だけ** ローカルビルドを `PATH` 前方に差し込み、外に出れば
+自動で brew 版に戻ります。`new` だけでなく `run` / `watch` / `doctor` など、すべての
+`metaphor` コマンドがこの切り替えの対象です。
+
+> **テンプレートの出どころも変わります。** ローカル開発版の `metaphor new` は
+> リポジトリの `Templates/` を直接読みます（`make install` でコピーした
+> `~/.local/share/metaphor/templates` ではありません）。テンプレートを編集して
+> すぐ試せるということです。brew 版は brew が配置したテンプレートを使います。
 
 ビルド成果物は `Syphon.framework` が隣接し `@loader_path` で解決されるため、
 `make install` のような rpath 付与・再署名なしでライブビューア（`watch --viewer`）も動く。
@@ -403,14 +423,42 @@ metaphor watch ...       # .build/debug/metaphor が動く
 cd ~                     # → 自動で brew 版に戻る
 ```
 
-- どちらが効いているか: `metaphor --version`。`-NN-gHASH` 付き＝開発版、`0.1.1`
-  のようなクリーンなタグのみ＝brew 版。
+- どちらが効いているか確認する: `command -v metaphor` がパスを直接示す
+  （`…/metaphor-cli/.build/debug/metaphor` ＝開発版、`/opt/homebrew/bin/metaphor`
+  ＝brew 版）。`metaphor --version` でも分かり、`-NN-gHASH` 付き＝開発版、
+  `0.1.1` のようなクリーンなタグのみ＝brew 版。
 - 既定は debug ビルド。release で確認したいときは `swift build -c release` 後に
   `METAPHOR_BUILD=release direnv allow`。
 - `.build/debug` が未ビルドなら自動で brew 版にフォールバックする。
 - direnv を使う場合 `make install` は不要。過去に `~/.local/bin/metaphor` を入れて
   いたら `make uninstall` で消しておくと混乱がない（direnv の方が常に優先されるため
   残っていても実害はない）。
+
+#### 別の場所のプロジェクトをローカル開発版で作る・育てる
+
+`~/Repos/metaphor-cli` の外（例: `~/Repos/test-meta`）を**ローカル開発版で**作って
+開発したいときは、そのプロジェクトにも同じ `.envrc` を置きます。こうすると
+**作成（`metaphor new .`）から日常運用（`run` / `watch`、Claude Code が読む `.mcp.json`）
+まで、ずっと同じローカル開発版 `metaphor`** で一貫します。フルパス呼び出しは要りません。
+
+```bash
+mkdir ~/Repos/test-meta && cd ~/Repos/test-meta
+echo 'PATH_add "$HOME/Repos/metaphor-cli/.build/debug"' > .envrc
+direnv allow                  # ここで `metaphor` がローカル開発版に確定
+command -v metaphor           # → …/metaphor-cli/.build/debug/metaphor を確認
+
+metaphor new .                # その同じ metaphor で初期化（テンプレは Templates/ から読まれる）
+echo '.envrc' >> .gitignore   # 生成された .gitignore に追記（マシン依存なのでコミットしない）
+metaphor watch                # 以降も同じローカル開発版で動く
+```
+
+> **順序がポイント。** 先に `.envrc` ＋ `direnv allow` を済ませてから `metaphor new .`
+> します。逆に `.envrc` を置く前に作成すると、`~/Repos/test-meta` には metaphor-cli の
+> `.envrc` が届かないため、**作成だけ brew 版**になってしまいます（この節冒頭の
+> 「`PATH` 上でどちらが先に見つかるか」の話）。
+>
+> `metaphor new .` は既存ディレクトリの中で初期化し、プロジェクト名はフォルダ名から
+> 取ります（`.envrc`/`.git` があっても OK）。詳細は [`metaphor new`](#metaphor-new) を参照。
 
 ## Templates
 
