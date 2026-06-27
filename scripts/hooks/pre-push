@@ -1,0 +1,22 @@
+#!/bin/sh
+#
+# pre-push: guard the metaphor <-> metaphor-cli cross-repo contract.
+#
+# Runs the token-presence check (always) and the CONTRACT.md byte-identity
+# check (skips gracefully if `gh` is unavailable/unauthenticated). Aborts the
+# push if either fails so drift is caught before it reaches CI.
+#
+# Activated by `make hooks` via `git config core.hooksPath scripts/hooks`.
+
+set -e
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+echo "[pre-push] Checking cross-repo contract tokens..."
+./scripts/check-contract.sh
+
+echo "[pre-push] Checking CONTRACT.md identity across repos..."
+./scripts/check-contract-identity.sh
+
+exit 0
