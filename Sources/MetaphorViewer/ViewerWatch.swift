@@ -103,9 +103,23 @@ private final class ViewerWatchDelegate: NSObject, NSApplicationDelegate {
         }
 
         // 子の（再）起動時に、ビューアを新しい Syphon サーバー（同名・別 UUID）へ
-        // 張り替えさせる。コールバックはバックグラウンドキューから来るのでメインへホップ。
+        // 張り替えさせ、状態を「起動・フレーム待ち」へ進める。コールバックは
+        // バックグラウンドキューから来るのでメインへホップ。
         session.onChildLaunched = { [weak viewer] in
-            DispatchQueue.main.async { viewer?.notifyChildRelaunched() }
+            DispatchQueue.main.async {
+                viewer?.notifyChildRelaunched()
+                viewer?.setState(.launching)
+            }
+        }
+
+        // ビルド開始/終了を窓のローディング表示へ反映する（黒い窓の解消・失敗の可視化）。
+        session.onBuildWillStart = { [weak viewer] _ in
+            DispatchQueue.main.async { viewer?.setState(.building) }
+        }
+        session.onBuildFinished = { [weak viewer] outcome in
+            guard !outcome.succeeded else { return }  // 成功時は続く onChildLaunched に任せる
+            let message = Self.firstErrorLine(outcome.output)
+            DispatchQueue.main.async { viewer?.setState(.buildFailed(message: message)) }
         }
 
         viewer.show()
@@ -128,6 +142,16 @@ private final class ViewerWatchDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         session.stop()
+    }
+
+    /// ビルド出力からエラー要約の 1 行を取り出す。`error:` を含む最初の行を優先し、
+    /// 無ければ最後の非空行。出力が空（`--no-probe` 等で未捕捉）なら nil。
+    static func firstErrorLine(_ output: String) -> String? {
+        let lines = output
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        return lines.first(where: { $0.contains("error:") }) ?? lines.last
     }
 }
 

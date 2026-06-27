@@ -250,6 +250,67 @@ final class WatchSessionTests: XCTestCase {
         XCTAssertTrue(console.errors.joined().contains("初回ビルド失敗"))
     }
 
+    func testStateCallbacksFireInOrderOnSuccess() throws {
+        let runner = RecordingProcessRunner()  // default exitCode 0
+        let launcher = RecordingLauncher()
+        let watcher = ManualFileWatcher()
+        let console = BufferedConsole()
+        let session = makeSession(runner: runner, launcher: launcher, watcher: watcher, console: console)
+
+        var events: [String] = []
+        session.onBuildWillStart = { initial in events.append("willStart(initial:\(initial))") }
+        session.onBuildFinished = { outcome in events.append("finished(succeeded:\(outcome.succeeded))") }
+        session.onChildLaunched = { events.append("launched") }
+
+        try session.start()
+
+        // 初回: ビルド開始 → ビルド完了(成功) → 子起動 の順。
+        XCTAssertEqual(events, [
+            "willStart(initial:true)",
+            "finished(succeeded:true)",
+            "launched",
+        ])
+    }
+
+    func testStateCallbacksReportBuildFailureWithoutLaunch() throws {
+        let runner = RecordingProcessRunner()
+        runner.result = ProcessResult(exitCode: 1)
+        let launcher = RecordingLauncher()
+        let watcher = ManualFileWatcher()
+        let console = BufferedConsole()
+        let session = makeSession(runner: runner, launcher: launcher, watcher: watcher, console: console)
+
+        var events: [String] = []
+        session.onBuildWillStart = { initial in events.append("willStart(initial:\(initial))") }
+        session.onBuildFinished = { outcome in events.append("finished(succeeded:\(outcome.succeeded))") }
+        session.onChildLaunched = { events.append("launched") }
+
+        try session.start()
+
+        // ビルド失敗時は launched が来ない（子を起動しない）。
+        XCTAssertEqual(events, [
+            "willStart(initial:true)",
+            "finished(succeeded:false)",
+        ])
+    }
+
+    func testReloadFiresBuildCallbacksWithInitialFalse() throws {
+        let runner = RecordingProcessRunner()
+        let launcher = RecordingLauncher()
+        let watcher = ManualFileWatcher()
+        let console = BufferedConsole()
+        let session = makeSession(runner: runner, launcher: launcher, watcher: watcher, console: console)
+
+        try session.start()
+
+        var initials: [Bool] = []
+        session.onBuildWillStart = { initials.append($0) }
+        watcher.fireChange()
+
+        // リロードのビルドは initial:false で通知される。
+        XCTAssertEqual(initials, [false])
+    }
+
     func testStopTerminatesProcessAndWatcher() throws {
         let runner = RecordingProcessRunner()
         let launcher = RecordingLauncher()

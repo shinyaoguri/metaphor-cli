@@ -28,6 +28,9 @@ private final class ViewerAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         viewer.show()
+        // 単体ビューアにはビルド段階が無いので、フレーム待ち表示から始める
+        // （既定の「ビルド中…」のままにしない）。
+        viewer.setState(.launching)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
