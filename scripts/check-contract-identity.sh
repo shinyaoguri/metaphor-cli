@@ -7,6 +7,11 @@
 # edited on only one side, so this script downloads the other repo's CONTRACT.md
 # and diffs it against the local copy.
 #
+# Coordinated edits: a CONTRACT.md change must land in both repos together. To
+# avoid a deadlock where each PR's CI compares against the other repo's (still
+# old) default branch, we first try the sibling repo's branch with the SAME name
+# as the current branch, and only fall back to its default branch.
+#
 # Requires the `gh` CLI authenticated (GITHUB_TOKEN is available by default in
 # GitHub Actions). Run from either repository — it auto-detects which one.
 #
@@ -37,31 +42,38 @@ if ! command -v gh >/dev/null 2>&1; then
   exit 0
 fi
 
+# Current branch: prefer the CI-provided PR head, else the local git branch.
+BRANCH="${GITHUB_HEAD_REF:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")}"
+
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
 
-# Fetch the other repo's CONTRACT.md (base64-decoded contents API).
-# A fetch failure (private repo, token scope, network) is treated as a
-# non-fatal SKIP so infra issues don't break CI; only a real diff fails.
-if ! gh api "repos/$OTHER_REPO/contents/CONTRACT.md" --jq '.content' 2>/dev/null \
-  | base64 -d > "$tmp"; then
+# Fetch CONTRACT.md from the other repo at an optional ref. Writes to $tmp and
+# returns success only on a non-empty result.
+fetch_contract() {
+  local ref="$1" path="repos/$OTHER_REPO/contents/CONTRACT.md"
+  [ -n "$ref" ] && path="$path?ref=$ref"
+  gh api "$path" --jq '.content' 2>/dev/null | base64 -d > "$tmp" 2>/dev/null
+  [ -s "$tmp" ]
+}
+
+source_desc=""
+if [ -n "$BRANCH" ] && fetch_contract "$BRANCH"; then
+  source_desc="$OTHER_REPO@$BRANCH"
+elif fetch_contract ""; then
+  source_desc="$OTHER_REPO (default branch)"
+else
   echo "warning: could not fetch CONTRACT.md from $OTHER_REPO (auth/network/visibility?) — skipping identity check."
   echo "         To enable this check for private repos, provide a token with read access to $OTHER_REPO."
   exit 0
 fi
 
-# An empty fetch (unexpected API shape) is also a skip rather than a false diff.
-if [ ! -s "$tmp" ]; then
-  echo "warning: fetched CONTRACT.md from $OTHER_REPO was empty — skipping identity check."
-  exit 0
-fi
-
 if diff -q CONTRACT.md "$tmp" >/dev/null; then
-  echo "CONTRACT.md is byte-identical to $OTHER_REPO."
+  echo "CONTRACT.md is byte-identical to $source_desc."
   exit 0
 fi
 
-echo "::error::CONTRACT.md differs from $OTHER_REPO. Sync both repos (see CONTRACT.md change rules)."
-echo "--- diff (local vs $OTHER_REPO) ---"
+echo "::error::CONTRACT.md differs from $source_desc. Sync both repos (see CONTRACT.md change rules)."
+echo "--- diff (local vs $source_desc) ---"
 diff CONTRACT.md "$tmp" || true
 exit 1
