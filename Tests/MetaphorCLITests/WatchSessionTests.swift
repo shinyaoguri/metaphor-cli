@@ -62,6 +62,18 @@ private struct FixedBinaryResolver: SketchBinaryResolving {
     func resolve(directory: URL, swiftArguments: [String]) -> String? { path }
 }
 
+/// `run` が必ず throw するプロセスランナー（ビルド実行自体の失敗を再現）。
+private struct ThrowingProcessRunner: ProcessRunning {
+    func run(
+        executable: String,
+        arguments: [String],
+        currentDirectory: URL?,
+        captureOutput: Bool
+    ) throws -> ProcessResult {
+        throw CLIError("exec boom")
+    }
+}
+
 // MARK: - Tests
 
 final class WatchSessionTests: XCTestCase {
@@ -248,6 +260,28 @@ final class WatchSessionTests: XCTestCase {
         XCTAssertEqual(launcher.launches.count, 0)
         XCTAssertTrue(watcher.started)  // ビルドが失敗しても監視は続ける
         XCTAssertTrue(console.errors.joined().contains("初回ビルド失敗"))
+    }
+
+    func testBuildExecutionErrorIsLoggedNotSwallowed() throws {
+        // `swift build` の起動自体が throw しても、サイレントに握り潰さず
+        // 明示的にログし、子は起動しない（合成の失敗結果で続行する）。
+        let launcher = RecordingLauncher()
+        let watcher = ManualFileWatcher()
+        let console = BufferedConsole()
+        let session = WatchSession(
+            directory: URL(fileURLWithPath: "/tmp/sketch"),
+            swiftArguments: [],
+            console: console,
+            processRunner: ThrowingProcessRunner(),
+            launcher: launcher,
+            watcher: watcher,
+            binaryResolver: NullBinaryResolver()
+        )
+
+        try session.start()
+
+        XCTAssertEqual(launcher.launches.count, 0)
+        XCTAssertTrue(console.errors.joined().contains("ビルド実行エラー"))
     }
 
     func testStateCallbacksFireInOrderOnSuccess() throws {

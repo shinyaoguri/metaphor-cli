@@ -15,13 +15,17 @@ public protocol SketchBinaryResolving {
 public struct SwiftPMBinaryResolver: SketchBinaryResolving {
     private let processRunner: any ProcessRunning
     private let fileManager: FileManager
+    /// 解決失敗の原因を残すための任意ロガー。nil ならサイレント（従来動作）。
+    private let console: (any Console)?
 
     public init(
         processRunner: any ProcessRunning = FoundationProcessRunner(),
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        console: (any Console)? = nil
     ) {
         self.processRunner = processRunner
         self.fileManager = fileManager
+        self.console = console
     }
 
     public func resolve(directory: URL, swiftArguments: [String]) -> String? {
@@ -35,12 +39,20 @@ public struct SwiftPMBinaryResolver: SketchBinaryResolving {
 
     /// `swift build --show-bin-path` の出力（ビルド成果物ディレクトリ）。
     private func binPath(directory: URL, swiftArguments: [String]) -> String? {
-        guard let result = try? processRunner.run(
-            executable: "/usr/bin/env",
-            arguments: ["swift", "build", "--show-bin-path"] + swiftArguments,
-            currentDirectory: directory,
-            captureOutput: true
-        ), result.exitCode == 0 else {
+        let result: ProcessResult
+        do {
+            result = try processRunner.run(
+                executable: "/usr/bin/env",
+                arguments: ["swift", "build", "--show-bin-path"] + swiftArguments,
+                currentDirectory: directory,
+                captureOutput: true
+            )
+        } catch {
+            console?.writeError("[watch] バイナリ解決に失敗（swift build --show-bin-path）: \(error) — swift run にフォールバックします")
+            return nil
+        }
+        guard result.exitCode == 0 else {
+            console?.writeError("[watch] バイナリ解決に失敗（swift build --show-bin-path が exit \(result.exitCode)）— swift run にフォールバックします")
             return nil
         }
         let path = result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -49,12 +61,19 @@ public struct SwiftPMBinaryResolver: SketchBinaryResolving {
 
     /// `swift package dump-package` の JSON から最初の executable プロダクト名を得る。
     private func firstExecutableProduct(directory: URL) -> String? {
-        guard let result = try? processRunner.run(
-            executable: "/usr/bin/env",
-            arguments: ["swift", "package", "dump-package"],
-            currentDirectory: directory,
-            captureOutput: true
-        ), result.exitCode == 0,
+        let result: ProcessResult
+        do {
+            result = try processRunner.run(
+                executable: "/usr/bin/env",
+                arguments: ["swift", "package", "dump-package"],
+                currentDirectory: directory,
+                captureOutput: true
+            )
+        } catch {
+            console?.writeError("[watch] バイナリ解決に失敗（swift package dump-package）: \(error) — swift run にフォールバックします")
+            return nil
+        }
+        guard result.exitCode == 0,
         let data = result.standardOutput.data(using: .utf8),
         let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
         let products = json["products"] as? [[String: Any]] else {
