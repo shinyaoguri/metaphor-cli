@@ -251,6 +251,17 @@ public final class WatchSession {
     /// 呼ばれうるので、受け手はメインスレッドへホップすること。
     public var onChildLaunched: (() -> Void)?
 
+    /// `swift build` を始める直前に呼ばれる（`initial` = 初回ビルドかどうか）。
+    /// ビューアが「ビルド中…」のローディング表示へ切り替えるための通知。
+    /// `onChildLaunched` 同様バックグラウンドキューから呼ばれうるので、受け手は
+    /// メインスレッドへホップすること。
+    public var onBuildWillStart: ((_ initial: Bool) -> Void)?
+
+    /// `swift build` が終わった直後に、結果（`BuildOutcome`）とともに呼ばれる。
+    /// ビューアがビルド失敗を可視化するための通知。成功時は続けて
+    /// `onChildLaunched` が呼ばれる。バックグラウンドキューから呼ばれうる。
+    public var onBuildFinished: ((BuildOutcome) -> Void)?
+
     public init(
         directory: URL,
         swiftArguments: [String],
@@ -327,8 +338,10 @@ public final class WatchSession {
         current?.sendLine(line)
     }
 
-    /// 直近ビルドの結果を記録する。`captureBuildOutput=false` のときは出力テキストは空。
-    private func recordBuildOutcome(_ result: ProcessResult, initial: Bool) {
+    /// 直近ビルドの結果を記録し、その `BuildOutcome` を返す。
+    /// `captureBuildOutput=false` のときは出力テキストは空。
+    @discardableResult
+    private func recordBuildOutcome(_ result: ProcessResult, initial: Bool) -> BuildOutcome {
         let output = [result.standardError, result.standardOutput]
             .filter { !$0.isEmpty }
             .joined(separator: "\n")
@@ -345,11 +358,14 @@ public final class WatchSession {
         if shareSession {
             SharedSession.writeBuildStatus(outcome, for: directory)
         }
+        return outcome
     }
 
     /// ビルドが通った場合のみ、前のスケッチを終了して新しく起動する。
     /// ビルド失敗時は動作中のスケッチを維持する（壊れた編集で窓を消さない）。
     private func rebuildAndLaunch(initial: Bool) {
+        onBuildWillStart?(initial)
+
         let build = (try? processRunner.run(
             executable: "/usr/bin/env",
             arguments: ["swift", "build"] + swiftArguments,
@@ -357,7 +373,8 @@ public final class WatchSession {
             captureOutput: captureBuildOutput
         )) ?? ProcessResult(exitCode: -1)
 
-        recordBuildOutcome(build, initial: initial)
+        let outcome = recordBuildOutcome(build, initial: initial)
+        onBuildFinished?(outcome)
 
         guard build.exitCode == 0 else {
             if initial {
