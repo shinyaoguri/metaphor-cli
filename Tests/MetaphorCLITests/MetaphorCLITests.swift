@@ -246,6 +246,152 @@ final class MetaphorCLITests: XCTestCase {
         }
     }
 
+    func testNewCommandInitializesInPlaceFromDirectoryName() throws {
+        try withSourceTemplates {
+            // The project name is derived from the folder, so create a named dir.
+            let projectDir = temporaryDirectory().appendingPathComponent("test-meta")
+            try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+            // A pre-existing dotfile must not block in-place init.
+            let envrc = projectDir.appendingPathComponent(".envrc")
+            try "PATH_add foo\n".write(to: envrc, atomically: true, encoding: .utf8)
+
+            let console = BufferedConsole()
+            let tool = CommandLineTool(
+                console: console,
+                processRunner: RecordingProcessRunner(),
+                currentDirectory: projectDir
+            )
+
+            try tool.run(arguments: ["new", ".", "--template", "live", "--metaphor-path", "/Users/so/Repos/metaphor"])
+
+            // "test-meta" -> package name "test-meta", module "TestMeta".
+            let app = projectDir.appendingPathComponent("Sources/TestMeta/App.swift")
+            let package = projectDir.appendingPathComponent("Package.swift")
+            XCTAssertTrue(FileManager.default.fileExists(atPath: app.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: package.path))
+            XCTAssertTrue(try String(contentsOf: package).contains("name: \"test-meta\""))
+
+            // The pre-existing dotfile survives in-place init.
+            XCTAssertTrue(FileManager.default.fileExists(atPath: envrc.path))
+            XCTAssertTrue(console.output.joined(separator: "\n").contains("(in place)"))
+        }
+    }
+
+    func testInitAliasInitializesCurrentDirectoryInPlace() throws {
+        try withSourceTemplates {
+            let projectDir = temporaryDirectory().appendingPathComponent("my-cool-sketch")
+            try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+
+            let console = BufferedConsole()
+            let tool = CommandLineTool(
+                console: console,
+                processRunner: RecordingProcessRunner(),
+                currentDirectory: projectDir
+            )
+
+            try tool.run(arguments: ["init", "--metaphor-path", "/Users/so/Repos/metaphor"])
+
+            let app = projectDir.appendingPathComponent("Sources/MyCoolSketch/App.swift")
+            XCTAssertTrue(FileManager.default.fileExists(atPath: app.path))
+            XCTAssertTrue(console.output.joined(separator: "\n").contains("(in place)"))
+        }
+    }
+
+    func testInPlaceInitRefusesToOverwriteExistingProjectFileWithoutForce() throws {
+        try withSourceTemplates {
+            let projectDir = temporaryDirectory().appendingPathComponent("occupied")
+            try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+            try "existing".write(to: projectDir.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+
+            let tool = CommandLineTool(
+                console: BufferedConsole(),
+                processRunner: RecordingProcessRunner(),
+                currentDirectory: projectDir
+            )
+
+            // In-place skips the bulk emptiness gate, but the pre-flight check
+            // still refuses to clobber an existing Package.swift without --force.
+            XCTAssertThrowsError(try tool.run(arguments: ["new", ".", "--metaphor-path", "/Users/so/Repos/metaphor"])) { error in
+                guard let cliError = error as? CLIError else {
+                    XCTFail("Expected CLIError")
+                    return
+                }
+                XCTAssertTrue(cliError.message.contains("Refusing to overwrite"))
+            }
+        }
+    }
+
+    func testInPlaceInitReportsAllCollisionsAndWritesNothing() throws {
+        try withSourceTemplates {
+            let projectDir = temporaryDirectory().appendingPathComponent("occupied")
+            try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+            let package = projectDir.appendingPathComponent("Package.swift")
+            try "old-package".write(to: package, atomically: true, encoding: .utf8)
+            try "old-readme".write(to: projectDir.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+            let console = BufferedConsole()
+            let tool = CommandLineTool(
+                console: console,
+                processRunner: RecordingProcessRunner(),
+                currentDirectory: projectDir
+            )
+
+            XCTAssertThrowsError(try tool.run(arguments: ["new", ".", "--metaphor-path", "/Users/so/Repos/metaphor"])) { error in
+                guard let cliError = error as? CLIError else { return XCTFail("Expected CLIError") }
+                // All collisions reported at once, not just the first.
+                XCTAssertTrue(cliError.message.contains("2 existing file(s)"))
+                XCTAssertTrue(cliError.message.contains("Package.swift"))
+                XCTAssertTrue(cliError.message.contains("README.md"))
+            }
+
+            // Nothing was written: existing files untouched, no partial scaffold.
+            XCTAssertEqual(try String(contentsOf: package), "old-package")
+            XCTAssertFalse(FileManager.default.fileExists(atPath: projectDir.appendingPathComponent("AGENTS.md").path))
+        }
+    }
+
+    func testNewCommandRejectsPathLikeNames() throws {
+        try withSourceTemplates {
+            let root = temporaryDirectory()
+            for badName in ["..", "a/b"] {
+                let tool = CommandLineTool(
+                    console: BufferedConsole(),
+                    processRunner: RecordingProcessRunner(),
+                    currentDirectory: root
+                )
+                XCTAssertThrowsError(try tool.run(arguments: ["new", badName, "--metaphor-path", "/Users/so/Repos/metaphor"])) { error in
+                    guard let cliError = error as? CLIError else { return XCTFail("Expected CLIError") }
+                    XCTAssertTrue(cliError.message.contains("Invalid project name"))
+                    XCTAssertEqual(cliError.exitCode, 2)
+                }
+            }
+            // The parent directory was never scaffolded into.
+            XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("Package.swift").path))
+        }
+    }
+
+    func testNewCommandRollsBackCreatedDirectoryOnWriteFailure() throws {
+        try withSourceTemplates {
+            let root = temporaryDirectory()
+            let projectURL = root.appendingPathComponent("Doomed")
+            // Fails once the generator descends into Sources/, after the top-level
+            // files have already been written into the freshly created directory.
+            let fileManager = FailingFileManager { $0.path.contains("/Sources") }
+
+            let command = NewCommand(
+                console: BufferedConsole(),
+                processRunner: RecordingProcessRunner(),
+                releaseService: StubReleaseService(),
+                currentDirectory: root,
+                fileManager: fileManager
+            )
+
+            XCTAssertThrowsError(try command.run(arguments: ["Doomed", "--metaphor-path", "/Users/so/Repos/metaphor"]))
+            // The directory we created is rolled back, so a retry isn't blocked.
+            XCTAssertFalse(FileManager.default.fileExists(atPath: projectURL.path))
+        }
+    }
+
     private func temporaryDirectory() -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("metaphor-cli-tests")
@@ -274,5 +420,29 @@ final class MetaphorCLITests: XCTestCase {
             }
         }
         return try body()
+    }
+}
+
+/// A FileManager that fails `createDirectory` for paths matching a predicate, to
+/// exercise NewCommand's rollback of a half-generated project.
+private final class FailingFileManager: FileManager {
+    private let shouldFail: (URL) -> Bool
+
+    init(failWhen shouldFail: @escaping (URL) -> Bool) {
+        self.shouldFail = shouldFail
+        super.init()
+    }
+
+    required init?(coder: NSCoder) { fatalError("unsupported") }
+
+    override func createDirectory(
+        at url: URL,
+        withIntermediateDirectories createIntermediates: Bool,
+        attributes: [FileAttributeKey: Any]? = nil
+    ) throws {
+        if shouldFail(url) {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        try super.createDirectory(at: url, withIntermediateDirectories: createIntermediates, attributes: attributes)
     }
 }
