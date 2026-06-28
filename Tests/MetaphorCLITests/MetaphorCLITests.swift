@@ -242,6 +242,43 @@ final class MetaphorCLITests: XCTestCase {
         XCTAssertEqual(SyphonName.stable(for: URL(fileURLWithPath: "/")), "metaphor")
     }
 
+    func testDoctorReportsLoadedSyphonFrameworkPath() throws {
+        let console = BufferedConsole()
+        let doctor = DoctorCommand(
+            console: console,
+            processRunner: RecordingProcessRunner(),
+            currentDirectory: temporaryDirectory(),
+            loadedImagePaths: {
+                ["/usr/lib/libSystem.B.dylib", "/opt/homebrew/Cellar/metaphor/9.9.9/libexec/Syphon.framework/Versions/A/Syphon"]
+            }
+        )
+
+        try doctor.run(arguments: [])
+
+        let output = console.output.joined(separator: "\n")
+        XCTAssertTrue(
+            output.contains("[ok] Syphon.framework loaded: /opt/homebrew/Cellar/metaphor/9.9.9/libexec/Syphon.framework/Versions/A/Syphon"),
+            "doctor should report the resolved Syphon.framework path"
+        )
+    }
+
+    func testDoctorWarnsWhenSyphonNotLoaded() throws {
+        let console = BufferedConsole()
+        let doctor = DoctorCommand(
+            console: console,
+            processRunner: RecordingProcessRunner(),
+            currentDirectory: temporaryDirectory(),
+            loadedImagePaths: { ["/usr/lib/libSystem.B.dylib"] }
+        )
+
+        try doctor.run(arguments: [])
+
+        XCTAssertTrue(
+            console.output.joined(separator: "\n").contains("[warn] Syphon.framework not among loaded images"),
+            "doctor should warn when Syphon.framework is not loaded"
+        )
+    }
+
     func testUpdateSelfInstallsFrameworkBesideResolvedBinaryThroughSymlink() throws {
         let fm = FileManager.default
         let root = temporaryDirectory()
