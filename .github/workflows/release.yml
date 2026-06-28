@@ -134,12 +134,18 @@ jobs:
           set -euo pipefail
           mkdir -p dist/payload dist/source dist/homebrew
           cp .build/release/metaphor dist/payload/metaphor
+          # The binary links Syphon.framework via @rpath, resolved against the
+          # @loader_path rpath — i.e. the framework must sit directly beside the
+          # binary. Ship it inside the tarball or the binary aborts at launch
+          # with "Library not loaded: @rpath/Syphon.framework/...". cp -R keeps
+          # the framework's internal version symlinks intact.
+          cp -R .build/release/Syphon.framework dist/payload/Syphon.framework
           cp -R Templates dist/payload/templates
           chmod 755 dist/payload/metaphor
           ASSET="metaphor-cli_${TAG_NAME}_macos_arm64.tar.gz"
           LATEST_ASSET="metaphor-cli_macos_arm64.tar.gz"
           SOURCE_ASSET="metaphor-cli_${TAG_NAME}_source.tar.gz"
-          tar -czf "dist/${ASSET}" -C dist/payload metaphor templates
+          tar -czf "dist/${ASSET}" -C dist/payload metaphor Syphon.framework templates
           cp "dist/${ASSET}" "dist/${LATEST_ASSET}"
           rsync -a \
             --exclude=".git" \
@@ -157,6 +163,31 @@ jobs:
           echo "ASSET=${ASSET}" >> "$GITHUB_ENV"
           echo "LATEST_ASSET=${LATEST_ASSET}" >> "$GITHUB_ENV"
           echo "SOURCE_ASSET=${SOURCE_ASSET}" >> "$GITHUB_ENV"
+
+      # Catch a missing/misplaced Syphon.framework before it ships: extract the
+      # tarball into a pristine directory (no .build, no source tree) and launch
+      # the binary. A dyld linkage failure aborts the run with a non-zero exit.
+      - name: Smoke-test packaged archive (dyld linkage)
+        run: |
+          set -euo pipefail
+          SMOKE="$(mktemp -d)"
+          tar -xzf "dist/${ASSET}" -C "$SMOKE"
+          ( cd "$SMOKE" && ./metaphor version )
+          echo "Smoke test passed: packaged binary resolves Syphon.framework."
+
+      # The tarball smoke above tests the flat extract layout (Homebrew/manual).
+      # This exercises the real scripts/install.sh against the freshly built
+      # tarball into a throwaway PREFIX, so its libexec+symlink placement is
+      # validated end-to-end (a missing/misplaced framework aborts ./metaphor).
+      - name: Smoke-test scripts/install.sh end-to-end
+        run: |
+          set -euo pipefail
+          PREFIX_DIR="$(mktemp -d)"
+          ARCHIVE="$PWD/dist/${ASSET}" PREFIX="$PREFIX_DIR" bash scripts/install.sh
+          "$PREFIX_DIR/bin/metaphor" version
+          test -L "$PREFIX_DIR/bin/metaphor"
+          test -d "$PREFIX_DIR/libexec/metaphor/Syphon.framework"
+          echo "install.sh end-to-end smoke passed."
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
