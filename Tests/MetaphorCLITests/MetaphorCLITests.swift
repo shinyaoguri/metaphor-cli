@@ -198,6 +198,50 @@ final class MetaphorCLITests: XCTestCase {
         XCTAssertTrue(console.output.contains("Run: brew upgrade metaphor"))
     }
 
+    func testRunForwardsExplicitSyphonNameAsEnv() throws {
+        let runner = RecordingProcessRunner()
+        let cmd = RunCommand(
+            console: BufferedConsole(),
+            processRunner: runner,
+            currentDirectory: temporaryDirectory()
+        )
+
+        try cmd.run(arguments: ["--syphon=MySketch", "--", "extra"])
+
+        let invocation = try XCTUnwrap(runner.invocations.first)
+        XCTAssertEqual(invocation.executable, "/usr/bin/env")
+        XCTAssertEqual(invocation.arguments, ["METAPHOR_SYPHON_NAME=MySketch", "swift", "run", "--", "extra"])
+    }
+
+    func testRunBareSyphonUsesDirectoryName() throws {
+        let sketchDir = temporaryDirectory().appendingPathComponent("WaveField")
+        try FileManager.default.createDirectory(at: sketchDir, withIntermediateDirectories: true)
+        let runner = RecordingProcessRunner()
+        let cmd = RunCommand(console: BufferedConsole(), processRunner: runner, currentDirectory: sketchDir)
+
+        try cmd.run(arguments: ["--syphon"])
+
+        XCTAssertEqual(runner.invocations.first?.arguments, ["METAPHOR_SYPHON_NAME=WaveField", "swift", "run"])
+    }
+
+    func testRunWithoutSyphonForwardsArgumentsUnchanged() throws {
+        let runner = RecordingProcessRunner()
+        let cmd = RunCommand(
+            console: BufferedConsole(),
+            processRunner: runner,
+            currentDirectory: temporaryDirectory()
+        )
+
+        try cmd.run(arguments: ["--", "foo"])
+
+        XCTAssertEqual(runner.invocations.first?.arguments, ["swift", "run", "--", "foo"])
+    }
+
+    func testSyphonStableNameUsesDirectoryBasename() {
+        XCTAssertEqual(SyphonName.stable(for: URL(fileURLWithPath: "/Users/x/Sketches/WaveField")), "WaveField")
+        XCTAssertEqual(SyphonName.stable(for: URL(fileURLWithPath: "/")), "metaphor")
+    }
+
     func testUpdateCheckUsesHomebrewUpgradeHintWhenInstalledByBrew() throws {
         let root = temporaryDirectory()
         let console = BufferedConsole()
