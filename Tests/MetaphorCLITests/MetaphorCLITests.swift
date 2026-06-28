@@ -242,6 +242,119 @@ final class MetaphorCLITests: XCTestCase {
         XCTAssertEqual(SyphonName.stable(for: URL(fileURLWithPath: "/")), "metaphor")
     }
 
+    func testUpdateSelfInstallsFrameworkBesideResolvedBinaryThroughSymlink() throws {
+        let fm = FileManager.default
+        let root = temporaryDirectory()
+
+        // Build a release tarball fixture mirroring the real payload layout:
+        // metaphor + Syphon.framework + templates.
+        let staging = root.appendingPathComponent("staging")
+        try fm.createDirectory(at: staging, withIntermediateDirectories: true)
+        try "NEW-BINARY".write(to: staging.appendingPathComponent("metaphor"), atomically: true, encoding: .utf8)
+        let fwVersionsA = staging.appendingPathComponent("Syphon.framework/Versions/A")
+        try fm.createDirectory(at: fwVersionsA, withIntermediateDirectories: true)
+        try "FRAMEWORK".write(to: fwVersionsA.appendingPathComponent("Syphon"), atomically: true, encoding: .utf8)
+        let templates = staging.appendingPathComponent("templates")
+        try fm.createDirectory(at: templates, withIntermediateDirectories: true)
+        try "x".write(to: templates.appendingPathComponent("placeholder.txt"), atomically: true, encoding: .utf8)
+
+        let archiveURL = root.appendingPathComponent("release.tar.gz")
+        try runTar(["-czf", archiveURL.path, "-C", staging.path, "metaphor", "Syphon.framework", "templates"])
+        let tarData = try Data(contentsOf: archiveURL)
+
+        // Pre-create the libexec + bin-symlink layout that scripts/install.sh / Homebrew produce.
+        let libexecMetaphor = root.appendingPathComponent("libexec/metaphor")
+        try fm.createDirectory(at: libexecMetaphor, withIntermediateDirectories: true)
+        try "OLD-BINARY".write(to: libexecMetaphor.appendingPathComponent("metaphor"), atomically: true, encoding: .utf8)
+        let binDir = root.appendingPathComponent("bin")
+        try fm.createDirectory(at: binDir, withIntermediateDirectories: true)
+        let symlink = binDir.appendingPathComponent("metaphor")
+        try fm.createSymbolicLink(atPath: symlink.path, withDestinationPath: "../libexec/metaphor/metaphor")
+
+        let assetURL = URL(string: "https://example.com/metaphor-cli_v9.0.0_macos_arm64.tar.gz")!
+        let releases = StubReleaseService()
+        releases.releases["shinyaoguri/metaphor-cli"] = GitHubRelease(
+            tagName: "v9.0.0",
+            name: "v9.0.0",
+            prerelease: false,
+            assets: [GitHubRelease.Asset(name: "metaphor-cli_v9.0.0_macos_arm64.tar.gz", browserDownloadURL: assetURL, size: nil)]
+        )
+        releases.downloads[assetURL] = tarData
+
+        let tool = CommandLineTool(
+            console: BufferedConsole(),
+            processRunner: FoundationProcessRunner(),
+            releaseService: releases,
+            currentDirectory: root,
+            executablePath: symlink.path
+        )
+
+        try tool.run(arguments: ["update", "self", "--force", "--no-verify", "--install-path", symlink.path])
+
+        // The framework must land beside the RESOLVED binary (libexec), not the symlink (bin).
+        XCTAssertTrue(
+            fm.fileExists(atPath: libexecMetaphor.appendingPathComponent("Syphon.framework/Versions/A/Syphon").path),
+            "Syphon.framework must be installed beside the resolved binary in libexec"
+        )
+        XCTAssertFalse(
+            fm.fileExists(atPath: binDir.appendingPathComponent("Syphon.framework").path),
+            "Framework must not be dropped next to the bin symlink"
+        )
+        XCTAssertEqual(
+            try String(contentsOf: libexecMetaphor.appendingPathComponent("metaphor"), encoding: .utf8),
+            "NEW-BINARY",
+            "Resolved binary should be replaced with the new one"
+        )
+        let attrs = try fm.attributesOfItem(atPath: symlink.path)
+        XCTAssertEqual(attrs[.type] as? FileAttributeType, .typeSymbolicLink, "bin entry must remain a symlink")
+        XCTAssertTrue(
+            fm.fileExists(atPath: root.appendingPathComponent("share/metaphor/templates/placeholder.txt").path),
+            "Templates should install under the prefix share dir"
+        )
+    }
+
+    func testUpdateSelfRefusesArchiveWithoutFramework() throws {
+        let fm = FileManager.default
+        let root = temporaryDirectory()
+
+        // Legacy-style payload: binary only, no Syphon.framework.
+        let staging = root.appendingPathComponent("staging")
+        try fm.createDirectory(at: staging, withIntermediateDirectories: true)
+        try "NEW-BINARY".write(to: staging.appendingPathComponent("metaphor"), atomically: true, encoding: .utf8)
+        let archiveURL = root.appendingPathComponent("release.tar.gz")
+        try runTar(["-czf", archiveURL.path, "-C", staging.path, "metaphor"])
+        let tarData = try Data(contentsOf: archiveURL)
+
+        let installPath = root.appendingPathComponent("bin/metaphor")
+        try fm.createDirectory(at: installPath.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "OLD-BINARY".write(to: installPath, atomically: true, encoding: .utf8)
+
+        let assetURL = URL(string: "https://example.com/metaphor-cli_v9.0.0_macos_arm64.tar.gz")!
+        let releases = StubReleaseService()
+        releases.releases["shinyaoguri/metaphor-cli"] = GitHubRelease(
+            tagName: "v9.0.0",
+            name: "v9.0.0",
+            prerelease: false,
+            assets: [GitHubRelease.Asset(name: "metaphor-cli_v9.0.0_macos_arm64.tar.gz", browserDownloadURL: assetURL, size: nil)]
+        )
+        releases.downloads[assetURL] = tarData
+
+        let tool = CommandLineTool(
+            console: BufferedConsole(),
+            processRunner: FoundationProcessRunner(),
+            releaseService: releases,
+            currentDirectory: root,
+            executablePath: installPath.path
+        )
+
+        XCTAssertThrowsError(
+            try tool.run(arguments: ["update", "self", "--force", "--no-verify", "--install-path", installPath.path]),
+            "update self must refuse an archive missing Syphon.framework"
+        )
+        // The existing binary must be left intact (rolled back), not destroyed.
+        XCTAssertEqual(try String(contentsOf: installPath, encoding: .utf8), "OLD-BINARY")
+    }
+
     func testUpdateCheckUsesHomebrewUpgradeHintWhenInstalledByBrew() throws {
         let root = temporaryDirectory()
         let console = BufferedConsole()
@@ -442,6 +555,15 @@ final class MetaphorCLITests: XCTestCase {
             .appendingPathComponent(UUID().uuidString)
         try! FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+
+    private func runTar(_ args: [String]) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["tar"] + args
+        try process.run()
+        process.waitUntilExit()
+        XCTAssertEqual(process.terminationStatus, 0, "tar \(args.joined(separator: " ")) failed")
     }
 
     private func sourceTemplatesDirectory() -> URL {
