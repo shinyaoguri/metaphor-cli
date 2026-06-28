@@ -7,3 +7,7 @@ DerivedData/
 
 # direnv local cache
 .direnv/
+
+# metaphor runtime/IPC scratch (probe frames, session manifest, build status)
+# written when running watch/mcp/probe inside the repo
+.metaphor/

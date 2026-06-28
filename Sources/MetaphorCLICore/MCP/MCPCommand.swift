@@ -78,7 +78,10 @@ public struct MCPCommand {
             )
         } else {
             // --- 単独モード（従来）: 自前で子をヘッドレス起動して所有する ---
-            let syphonName = "metaphor-mcp-\(ProcessInfo.processInfo.processIdentifier)"
+            // Syphon は安定名（スケッチ名）で publish したまま維持する。AI が MCP で
+            // 観測している最中も、人間が MadMapper 等で同じ出力を一覧から拾えるように
+            // するため（per-pid の不安定名だと毎回選び直しになる）。
+            let syphonName = SyphonName.stable(for: directory)
             let session = WatchSession(
                 directory: directory,
                 swiftArguments: [],
