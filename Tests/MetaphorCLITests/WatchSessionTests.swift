@@ -164,6 +164,37 @@ final class WatchSessionTests: XCTestCase {
         )
     }
 
+    func testParseWatchArgumentsExtractsFPS() {
+        // 空白区切り
+        XCTAssertEqual(
+            parseWatchArguments(["--fps", "30"]),
+            ParsedWatchArguments(syphonName: nil, fps: 30, swiftArguments: [])
+        )
+        // = 区切り
+        XCTAssertEqual(
+            parseWatchArguments(["--fps=24"]),
+            ParsedWatchArguments(syphonName: nil, fps: 24, swiftArguments: [])
+        )
+        // 他のフラグと混在しても値を巻き込まない／swift 引数は保持
+        XCTAssertEqual(
+            parseWatchArguments(["--fps", "60", "-c", "release"]),
+            ParsedWatchArguments(syphonName: nil, fps: 60, swiftArguments: ["-c", "release"])
+        )
+        // 非数値・0 以下・末尾の値なしは無効（nil）
+        XCTAssertEqual(
+            parseWatchArguments(["--fps", "abc"]),
+            ParsedWatchArguments(syphonName: nil, fps: nil, swiftArguments: [])
+        )
+        XCTAssertEqual(
+            parseWatchArguments(["--fps", "0"]),
+            ParsedWatchArguments(syphonName: nil, fps: nil, swiftArguments: [])
+        )
+        XCTAssertEqual(
+            parseWatchArguments(["-c", "release", "--fps"]),
+            ParsedWatchArguments(syphonName: nil, fps: nil, swiftArguments: ["-c", "release"])
+        )
+    }
+
     func testForwardInputGoesToCurrentChild() throws {
         let runner = RecordingProcessRunner()
         let launcher = RecordingLauncher()

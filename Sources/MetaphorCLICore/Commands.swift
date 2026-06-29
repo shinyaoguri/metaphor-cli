@@ -93,8 +93,8 @@ public struct CommandLineTool {
     Usage:
       metaphor new <name> [--template 2d] [--metaphor-version 0.2.3]
       metaphor init [--template 2d]
-      metaphor run [swift-run-arguments...]
-      metaphor watch [--no-viewer] [--syphon-name <name>] [swift-build/run-arguments...]
+      metaphor run [--syphon[=name]] [--fps <n>] [swift-run-arguments...]
+      metaphor watch [--no-viewer] [--syphon-name <name>] [--fps <n>] [swift-build/run-arguments...]
       metaphor mcp [sketch-dir]
       metaphor update [check|self|library|all]
       metaphor doctor
