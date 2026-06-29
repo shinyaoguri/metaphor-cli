@@ -40,17 +40,50 @@ check() {
   done
 }
 
+# check_regex <file> <description> <ERE> — pattern must match somewhere in file.
+# Used for format checks (Syphon pin URL/checksum shape) that a substring can't catch.
+check_regex() {
+  file="$1"; desc="$2"; pat="$3"
+  if [ ! -f "$file" ]; then
+    echo "::error::contract file missing: $file (REPO=$REPO)"
+    fail=1
+    return
+  fi
+  if ! grep -Eq -- "$pat" "$file"; then
+    echo "::error::contract format check '$desc' failed in $file"
+    echo "          Expected a line matching: $pat"
+    echo "          This shape is part of the metaphor <-> metaphor-cli contract (see CONTRACT.md)."
+    fail=1
+  fi
+}
+
 case "$REPO" in
   metaphor)
-    # Env vars read by the headless/viewer runtime.
+    # Env vars read by the headless/viewer runtime (contract point 2).
     check "Sources/MetaphorCore/Sketch/SketchRunner.swift" \
       METAPHOR_VIEWER METAPHOR_SYPHON_NAME METAPHOR_FPS METAPHOR_PROBE
-    # stdin JSON Lines input event tags parsed from the viewer.
+    # stdin JSON Lines input: event tags AND field names parsed (contract point 3).
     check "Sources/MetaphorCore/Input/InputInjectionPlugin.swift" \
-      mouseDown mouseUp mouseMove mouseDrag scroll keyDown keyUp
-    # Probe file protocol paths.
+      mouseDown mouseUp mouseMove mouseDrag scroll keyDown keyUp \
+      button code chars repeat dx dy
+    # Probe file protocol root path (contract point 4).
     check "Sources/MetaphorCore/Probe/MetaphorProbeConfig.swift" \
       ".metaphor/probe"
+    # ProbeRequest fields the consumer writes (contract point 4).
+    check "Sources/MetaphorCore/Probe/ProbeRequest.swift" \
+      id label scale frames every
+    # frame.json schema keys (contract point 4).
+    check "Sources/MetaphorCore/Probe/ProbeFrameMetadata.swift" \
+      schemaVersion custom customTypes warnings
+    # sequence.json schema keys (contract point 4).
+    check "Sources/MetaphorCore/Probe/ProbeSequenceManifest.swift" \
+      frameCount requestedFrames every frames contactSheet
+    # Schema version VALUES — a bump here is a breaking change; CONTRACT.md must move too.
+    check "Sources/MetaphorCore/Probe/MetaphorProbePlugin.swift" \
+      "schemaVersion: 3" "schemaVersion: 1"
+    # Syphon Release dispatch event_type fired to metaphor-cli (auto-bump, L2a).
+    check ".github/workflows/release.yml" \
+      "event_type=syphon-release"
     # AI docs consumed by metaphor-cli's `api_reference` MCP tool (must exist).
     check "llms.txt"
     check "llms-sketch.txt"
@@ -58,15 +91,33 @@ case "$REPO" in
     check "docs/ai/examples-index.json"
     ;;
   metaphor-cli)
-    # Env vars set when spawning the child sketch.
+    # Env vars set when spawning the child sketch (contract point 2).
     check "Sources/MetaphorViewer/ViewerWatch.swift" \
-      METAPHOR_VIEWER METAPHOR_SYPHON_NAME
-    # stdin JSON Lines input event tags emitted to the child.
+      METAPHOR_VIEWER METAPHOR_SYPHON_NAME METAPHOR_PROBE METAPHOR_FPS
+    # METAPHOR_FPS is also wired on the --no-viewer path.
+    check "Sources/MetaphorCLICore/WatchCommand.swift" \
+      METAPHOR_FPS
+    # stdin JSON Lines input event tags emitted to the child (contract point 3).
     check "Sources/MetaphorViewer/ViewerWindow.swift" \
       mouseDown mouseUp mouseMove mouseDrag scroll keyDown keyUp
-    # Syphon.xcframework Release pin (binaryTarget fallback).
+    # MCP `input` builder + `capture_sequence` tool: event field names + tool name.
+    check "Sources/MetaphorCLICore/MCP/SketchToolHandler.swift" \
+      button code chars repeat dx dy capture_sequence
+    # Probe request.json is written ATOMICALLY (.tmp -> rename) by both tools (contract point 4).
+    check "Sources/MetaphorCLICore/MCP/ProbeSnapshotTool.swift" \
+      "request.json.tmp"
+    check "Sources/MetaphorCLICore/MCP/ProbeSequenceTool.swift" \
+      "request.json.tmp" frames every frameCount contactSheet
+    # Syphon.xcframework Release pin (binaryTarget fallback) — presence + format (contract point 1).
     check "Package.swift" \
       "releases/download/v" "checksum:"
+    check_regex "Package.swift" "Syphon release URL" \
+      "releases/download/v[0-9]+\.[0-9]+\.[0-9]+/Syphon\.xcframework\.zip"
+    check_regex "Package.swift" "Syphon checksum (sha256, 64 hex)" \
+      "checksum: \"[0-9a-f]{64}\""
+    # Syphon Release dispatch event_type received from metaphor (auto-bump, L2a).
+    check ".github/workflows/syphon-bump.yml" \
+      "syphon-release"
     # AI doc filenames the `api_reference` MCP tool reads from the metaphor package.
     check "Sources/MetaphorCLICore/MCP/MetaphorDocsLocator.swift" \
       "llms.txt"

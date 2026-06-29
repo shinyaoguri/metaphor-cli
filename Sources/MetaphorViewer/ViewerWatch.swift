@@ -14,6 +14,7 @@ public func runViewerWatch(
     swiftArguments: [String],
     syphonName requestedSyphonName: String? = nil,
     probeEnabled: Bool = true,
+    fps: Int? = nil,
     console: any Console
 ) throws {
     let package = directory.appendingPathComponent("Package.swift")
@@ -43,6 +44,10 @@ public func runViewerWatch(
     ]
     if probeEnabled {
         childEnvironment["METAPHOR_PROBE"] = "1"
+    }
+    // `--fps <n>` 指定時はレンダー FPS を子へ渡す（CONTRACT.md 契約点 2）。
+    if let fps {
+        childEnvironment["METAPHOR_FPS"] = String(fps)
     }
 
     let session = WatchSession(

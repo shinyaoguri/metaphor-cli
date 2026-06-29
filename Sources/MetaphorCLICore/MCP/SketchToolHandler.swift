@@ -3,6 +3,7 @@ import Foundation
 /// `metaphor mcp` が公開する MCP ツール群。
 ///
 /// - `snapshot`（観測）: 現在フレームの PNG と内部状態を返す。
+/// - `capture_sequence`（観測）: 連続フレーム列（時間軸）の contact sheet と manifest を返す。
 /// - `input`（操作）: マウス/キーイベントを子スケッチの stdin へ転送する。
 /// - `build_status`: 直近の `swift build` の成否とエラーを返す。
 /// - `api_reference`: 依存先 metaphor ライブラリの API ドキュメントを返す。
@@ -10,6 +11,7 @@ import Foundation
 /// 副作用は注入されたクロージャ越しに行うのでユニットテスト可能。
 public final class SketchToolHandler: MCPToolHandling {
     private let snapshotTool: ProbeSnapshotTool
+    private let sequenceTool: ProbeSequenceTool
     private let forwardInput: (String) -> Void
     private let buildStatusProvider: () -> BuildOutcome?
     /// 入力注入が可能か。共有セッションへアタッチした `metaphor mcp` では、子の stdin は
@@ -21,12 +23,14 @@ public final class SketchToolHandler: MCPToolHandling {
 
     public init(
         snapshotTool: ProbeSnapshotTool,
+        sequenceTool: ProbeSequenceTool,
         forwardInput: @escaping (String) -> Void,
         buildStatusProvider: @escaping () -> BuildOutcome?,
         inputAvailable: Bool = true,
         docsRootProvider: @escaping () -> URL? = { nil }
     ) {
         self.snapshotTool = snapshotTool
+        self.sequenceTool = sequenceTool
         self.forwardInput = forwardInput
         self.buildStatusProvider = buildStatusProvider
         self.inputAvailable = inputAvailable
@@ -63,6 +67,35 @@ public final class SketchToolHandler: MCPToolHandling {
                             "description": "このフレームを待つ最大秒数 (1〜60、既定15)。初回はスケッチの cold-start を待つため長めが安全。",
                         ],
                     ],
+                ]
+            ),
+            MCPToolDefinition(
+                name: "capture_sequence",
+                description: "動作中のスケッチの連続フレーム列を撮り、時間軸の観測を返す。"
+                    + "contact sheet(一覧モンタージュ PNG)と manifest(sequence.json: 各フレームの"
+                    + "時刻/サイズ/ファイル名/警告)を返す。アニメーションや時間変化の確認に使う。"
+                    + "1 枚だけなら snapshot を使う。",
+                inputSchema: [
+                    "type": "object",
+                    "properties": [
+                        "frames": [
+                            "type": "integer",
+                            "description": "採取する枚数 (2 以上)。",
+                        ],
+                        "every": [
+                            "type": "integer",
+                            "description": "採取間隔（ストライド、既定 1=毎フレーム）。",
+                        ],
+                        "label": [
+                            "type": "string",
+                            "description": "任意のラベル。sequence.json に記録される。",
+                        ],
+                        "timeout": [
+                            "type": "number",
+                            "description": "このシーケンスを待つ最大秒数 (1〜120、既定30)。frames×every 枚ぶん + cold-start を見込む。",
+                        ],
+                    ],
+                    "required": ["frames"],
                 ]
             ),
             MCPToolDefinition(
@@ -121,6 +154,8 @@ public final class SketchToolHandler: MCPToolHandling {
             let timeout = (arguments["timeout"] as? NSNumber)?.doubleValue
             let result = snapshotTool.snapshot(label: arguments["label"] as? String, timeoutOverride: timeout)
             return annotateWithBuildProvenance(result)
+        case "capture_sequence":
+            return handleCaptureSequence(arguments)
         case "input":
             return handleInput(arguments)
         case "build_status":
@@ -146,6 +181,23 @@ public final class SketchToolHandler: MCPToolHandling {
         var content = result.content
         content.append(["type": "text", "text": note])
         return MCPToolResult(content: content, isError: result.isError)
+    }
+
+    // MARK: - capture_sequence
+
+    private func handleCaptureSequence(_ arguments: [String: Any]) -> MCPToolResult {
+        guard let frames = (arguments["frames"] as? NSNumber)?.intValue else {
+            return .text("capture_sequence: 'frames' (整数, 2 以上) が必要です。", isError: true)
+        }
+        let every = (arguments["every"] as? NSNumber)?.intValue
+        let timeout = (arguments["timeout"] as? NSNumber)?.doubleValue
+        let result = sequenceTool.captureSequence(
+            label: arguments["label"] as? String,
+            frames: frames,
+            every: every,
+            timeoutOverride: timeout
+        )
+        return annotateWithBuildProvenance(result)
     }
 
     // MARK: - input

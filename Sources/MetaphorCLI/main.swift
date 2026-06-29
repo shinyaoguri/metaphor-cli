@@ -49,6 +49,7 @@ enum MetaphorCLIEntryPoint {
                 swiftArguments: parsed.swiftArguments,
                 syphonName: parsed.syphonName,
                 probeEnabled: parsed.probeEnabled,
+                fps: parsed.fps,
                 console: StandardConsole()
             )
         } catch let error as CLIError {

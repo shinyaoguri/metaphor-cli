@@ -7,12 +7,16 @@ public struct ParsedWatchArguments: Equatable {
     /// Probe を子で有効化するか（既定 true）。`--no-probe` で false。
     /// 有効だと `metaphor mcp` がアタッチして観測できる（共有セッション）。
     public let probeEnabled: Bool
+    /// `--fps <n>` で指定されたレンダー FPS（未指定なら nil＝スケッチの config.fps）。
+    /// 子へ `METAPHOR_FPS` 環境変数として渡す（CONTRACT.md 契約点 2）。
+    public let fps: Int?
     /// `watch` 専用フラグを除いた、swift build/run へ渡す引数。
     public let swiftArguments: [String]
 
-    public init(syphonName: String?, probeEnabled: Bool = true, swiftArguments: [String]) {
+    public init(syphonName: String?, probeEnabled: Bool = true, fps: Int? = nil, swiftArguments: [String]) {
         self.syphonName = syphonName
         self.probeEnabled = probeEnabled
+        self.fps = fps
         self.swiftArguments = swiftArguments
     }
 }
@@ -22,11 +26,14 @@ public struct ParsedWatchArguments: Equatable {
 /// 取り除く専用フラグ:
 /// - `--viewer` / `--no-viewer`（ビューア制御。`swift build --no-viewer` のような誤渡しを防ぐ）
 /// - `--syphon-name <name>` / `--syphon-name=<name>`（Syphon サーバー名の指定。値ごと除去）
+/// - `--fps <n>` / `--fps=<n>`（レンダー FPS の指定。値ごと除去。非数値・0 以下は無視）
 public func parseWatchArguments(_ args: [String]) -> ParsedWatchArguments {
     var syphonName: String?
     var probeEnabled = true
+    var fps: Int?
     var swift: [String] = []
     let prefix = "--syphon-name="
+    let fpsPrefix = "--fps="
     var i = 0
     while i < args.count {
         let arg = args[i]
@@ -39,6 +46,14 @@ public func parseWatchArguments(_ args: [String]) -> ParsedWatchArguments {
             }
         case arg.hasPrefix(prefix):
             syphonName = String(arg.dropFirst(prefix.count))
+        case arg == "--fps":
+            // 次のトークンを FPS として取り込む（無ければ無視）。
+            if i + 1 < args.count {
+                fps = Int(args[i + 1])
+                i += 1
+            }
+        case arg.hasPrefix(fpsPrefix):
+            fps = Int(arg.dropFirst(fpsPrefix.count))
         case arg == "--viewer", arg == "--no-viewer":
             break  // 何もしない（除去）
         case arg == "--no-probe":
@@ -50,7 +65,9 @@ public func parseWatchArguments(_ args: [String]) -> ParsedWatchArguments {
     }
     // 空文字の名前は無効として無視（`--syphon-name ""` 等）。
     if let name = syphonName, name.isEmpty { syphonName = nil }
-    return ParsedWatchArguments(syphonName: syphonName, probeEnabled: probeEnabled, swiftArguments: swift)
+    // 0 以下の FPS は無効として無視。
+    if let value = fps, value <= 0 { fps = nil }
+    return ParsedWatchArguments(syphonName: syphonName, probeEnabled: probeEnabled, fps: fps, swiftArguments: swift)
 }
 
 // MARK: - Watch command (entry point + run loop)
@@ -77,7 +94,7 @@ public struct WatchCommand {
         if arguments.contains("--help") || arguments.contains("-h") {
             console.write("""
             Usage:
-              metaphor watch [--no-viewer] [swift-build/run-arguments...]
+              metaphor watch [--no-viewer] [--syphon-name <name>] [--fps <n>] [swift-build/run-arguments...]
 
             ソース（Sources/**/*.swift, Package.swift）を監視し、変更のたびに
             再ビルドします。ビルドが失敗した場合は動作中のスケッチを維持します。
@@ -98,6 +115,11 @@ public struct WatchCommand {
               既定（ビューア）モードで publish する Syphon サーバー名を固定します。
               未指定だと watch プロセスごとに変わる名前（衝突しないが毎回変わる）に
               なります。MadMapper 等へ安定した名前で送りたいときに使います。
+
+            --fps <n>:
+              スケッチのレンダー FPS を上書きします（子へ METAPHOR_FPS を渡す）。
+              未指定だとスケッチの config.fps が使われます。ビューア／--no-viewer の
+              どちらのモードでも有効です。
             """)
             return
         }
@@ -120,6 +142,9 @@ public struct WatchCommand {
         }
         if parsed.probeEnabled {
             environment["METAPHOR_PROBE"] = "1"
+        }
+        if let fps = parsed.fps {
+            environment["METAPHOR_FPS"] = String(fps)
         }
 
         let session = WatchSession(

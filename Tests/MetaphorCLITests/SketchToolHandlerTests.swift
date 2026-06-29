@@ -16,6 +16,7 @@ final class SketchToolHandlerTests: XCTestCase {
             .appendingPathComponent("handler-\(ProcessInfo.processInfo.globallyUniqueString)")
         return SketchToolHandler(
             snapshotTool: ProbeSnapshotTool(sketchDirectory: dir, timeout: 1.0),
+            sequenceTool: ProbeSequenceTool(sketchDirectory: dir, timeout: 1.0),
             forwardInput: { box.lines.append($0) },
             buildStatusProvider: { box.outcome },
             inputAvailable: inputAvailable,
@@ -25,7 +26,23 @@ final class SketchToolHandlerTests: XCTestCase {
 
     func testToolsListIncludesAllTools() {
         let names = makeHandler(Box()).tools.map(\.name)
-        XCTAssertEqual(Set(names), ["snapshot", "input", "build_status", "api_reference"])
+        XCTAssertEqual(
+            Set(names),
+            ["snapshot", "capture_sequence", "input", "build_status", "api_reference"]
+        )
+    }
+
+    func testCaptureSequenceRejectsFramesBelowTwo() {
+        // frames < 2 は snapshot を使うべきで、即座にエラー（タイムアウト待ちしない）。
+        let result = makeHandler(Box()).call(name: "capture_sequence", arguments: ["frames": 1])
+        XCTAssertTrue(result.isError)
+        let text = result.content.first?["text"] as? String
+        XCTAssertTrue(text?.contains("frames") == true)
+    }
+
+    func testCaptureSequenceRequiresFrames() {
+        let result = makeHandler(Box()).call(name: "capture_sequence", arguments: [:])
+        XCTAssertTrue(result.isError)
     }
 
     func testInputBuildsJSONLineAndForwards() throws {
