@@ -11,3 +11,7 @@ DerivedData/
 # metaphor runtime/IPC scratch (probe frames, session manifest, build status)
 # written when running watch/mcp/probe inside the repo
 .metaphor/
+
+# Python bytecode cache (scripts/measure-roundtrip.py 等の実行で生成)
+__pycache__/
+*.pyc

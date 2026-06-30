@@ -149,6 +149,41 @@ public final class WatchSession {
         }
     }
 
+    /// 監視対象スケッチの `.swift` ソース署名を集約した決定論的スタンプ（provenance）。
+    /// 各ファイルの (パス:mtime:サイズ) を FNV-1a でハッシュする。編集すると mtime/サイズが
+    /// 変わるので値が変わり、同一ソースでは再現する。`.build` 配下のビルド生成物は除外する。
+    /// `METAPHOR_SOURCE_STAMP` として子スケッチへ渡し、frame.json の sourceStamp に反映される
+    /// （契約点 2 / 4。CONTRACT.md の frame.json スキーマ v4 を参照）。
+    func computeSourceStamp() -> String {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325  // FNV-1a (64-bit) offset basis
+        let prime: UInt64 = 0x100_0000_01b3
+        let fm = FileManager.default
+        var entries: [String] = []
+        if let enumerator = fm.enumerator(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) {
+            for case let url as URL in enumerator {
+                if url.lastPathComponent == ".build" {
+                    enumerator.skipDescendants()
+                    continue
+                }
+                guard url.pathExtension == "swift" else { continue }
+                let values = try? url.resourceValues(
+                    forKeys: [.contentModificationDateKey, .fileSizeKey]
+                )
+                let mtime = values?.contentModificationDate?.timeIntervalSince1970 ?? 0
+                let size = values?.fileSize ?? 0
+                entries.append("\(url.path):\(mtime):\(size)")
+            }
+        }
+        for entry in entries.sorted() {
+            for byte in entry.utf8 { hash = (hash ^ UInt64(byte)) &* prime }
+        }
+        return String(format: "%016llx", hash)
+    }
+
     /// 入力イベント（JSON Lines 1 行）を現在動作中の子スケッチへ転送する。
     /// 再ビルド中で子が居ない瞬間は黙って捨てる（次の子に引き継がない）。
     public func forwardInput(_ line: String) {
@@ -229,12 +264,18 @@ public final class WatchSession {
             arguments = ["swift", "run", "--skip-build"] + swiftArguments
         }
 
+        // ソース世代の刻印（provenance）を毎起動で更新し、子へ渡す。子スケッチの
+        // Probe プラグインがこれを frame.json の sourceStamp に echo するので、AI／
+        // 測定ハーネスが「観測フレームが今の編集を反映しているか」を機械判定できる。
+        var childEnvironment = extraEnvironment ?? [:]
+        childEnvironment["METAPHOR_SOURCE_STAMP"] = computeSourceStamp()
+
         do {
             current = try launcher.launch(
                 executable: executable,
                 arguments: arguments,
                 currentDirectory: directory,
-                environment: extraEnvironment
+                environment: childEnvironment
             )
             console.write(initial ? "[watch] 実行中" : "[watch] リロードしました")
             onChildLaunched?()  // ビューアに Syphon サーバーの差し替え追従を促す。
