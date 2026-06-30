@@ -35,7 +35,7 @@
 | # | 契約 | producer（定義側） | consumer（依存側） |
 |---|---|---|---|
 | 1 | **Syphon.xcframework の Release pin**<br>URL `…/releases/download/<tag>/Syphon.xcframework.zip` + SHA256 checksum | `metaphor` が Release で発行（`release.yml`） | `metaphor-cli/Package.swift` の `binaryTarget` |
-| 2 | **環境変数**<br>`METAPHOR_VIEWER` / `METAPHOR_SYPHON_NAME` / `METAPHOR_FPS` / `METAPHOR_PROBE` | `metaphor` が読む（`SketchRunner.swift`） | `metaphor-cli` が設定（`ViewerWatch.swift` / `Watch.swift`） |
+| 2 | **環境変数**<br>`METAPHOR_VIEWER` / `METAPHOR_SYPHON_NAME` / `METAPHOR_FPS` / `METAPHOR_PROBE` / `METAPHOR_SOURCE_STAMP` | `metaphor` が読む（`SketchRunner.swift`、`METAPHOR_SOURCE_STAMP` は `MetaphorProbePlugin.swift`） | `metaphor-cli` が設定（`ViewerWatch.swift` / `Watch.swift`） |
 | 3 | **stdin 入力イベント（JSON Lines）**<br>キー `t` の値 `mouseDown` `mouseUp` `mouseMove` `mouseDrag` `scroll` `keyDown` `keyUp`、フィールド `x` `y` `button` `code` `chars` `repeat` `dx` `dy` | `metaphor` が解析（`InputInjectionPlugin.swift`） | `metaphor-cli` が送出（`ViewerWindow.swift`） |
 | 4 | **Probe ファイル契約**<br>`.metaphor/probe/request.json`（リクエスト）/ `.metaphor/probe/current/frame.{png,json}`（単一フレーム出力）/ `.metaphor/probe/current/sequence/`（連続フレーム出力）と `frame.json` / `sequence.json` スキーマ、`ProbeRequest` のフィールド（`id` / `label` / `scale` / `frames` / `every`） | `metaphor`（`MetaphorProbeConfig.swift` / `ProbeFrameMetadata.swift` / `ProbeSequenceManifest.swift` / `ProbeRequest.swift`） | AI エージェント・ツール（`metaphor-cli` の `snapshot` / `capture_sequence`） |
 | 5 | **Syphon サーバー名 / headless 挙動**<br>`METAPHOR_VIEWER=1` で `METAPHOR_SYPHON_NAME` のサーバーへ publish | `metaphor` headless モード（`SketchRunner.swift`） | `metaphor-cli`（`SyphonFrameSource.swift`） |
@@ -45,13 +45,20 @@
 
 `frame.json` は `schemaVersion`（整数）を持ち、**前方互換の additive 変更**を原則とします。
 
-- **現行 = `schemaVersion: 3`**。トップレベルキー: `schemaVersion` / `id` / `label?` /
-  `frame` / `time` / `size{width,height}` / `custom{}` / `customTypes{}` / `warnings[]` / `stats?`。
+- **現行 = `schemaVersion: 4`**。トップレベルキー: `schemaVersion` / `id` / `label?` /
+  `sourceStamp?` / `frame` / `time` / `size{width,height}` / `custom{}` / `customTypes{}` /
+  `warnings[]` / `stats?`。
 - `stats`（v2 で追加）= `meanColor[3]` / `meanLuminance` / `contentFraction` /
   `contentBounds?{x,y,width,height}`（正規化・原点左上、blank 時省略） / `sampleGrid`。
 - `customTypes`（v3 で追加）= `custom` の各キー → 型タグ（`double` / `int` / `string` /
   `bool` / `vec2` / `vec3` / `vec4`）。ベクトルが裸の配列になるため値だけでは
   `vec2` と「2 要素配列」を区別できない問題を解消する。
+- `sourceStamp`（v4 で追加）= ソース世代の刻印（provenance）。**consumer（cli）が
+  子プロセス起動時に環境変数 `METAPHOR_SOURCE_STAMP` で注入**し、producer はそれを
+  `frame.json` に echo する。編集ごとに変わる識別子（例: 監視対象ソースの mtime/サイズ
+  集約ハッシュ、または build id）。AI／測定ハーネスが「観測フレームがどのソース版を
+  反映するか」を判定し、保存→反映（リビルド→再起動）の完了を機械検出するために使う。
+  未注入時は省略（nil）。
 - **consumer 規約**: 未知のキーは無視する。`metaphor-cli` の MCP サーバは
   `frame.json` を **verbatim 透過**するため、additive なフィールド追加では cli の
   コード変更は不要（将来 cli が個別フィールドを解釈し始めたら本表に追記する）。

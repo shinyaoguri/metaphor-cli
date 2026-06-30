@@ -113,6 +113,49 @@ final class WatchSessionTests: XCTestCase {
         XCTAssertTrue(watcher.started)
     }
 
+    func testSourceStampInjectedIntoChildEnv() throws {
+        let runner = RecordingProcessRunner()  // default exitCode 0
+        let launcher = RecordingLauncher()
+        let watcher = ManualFileWatcher()
+        let console = BufferedConsole()
+        let session = makeSession(runner: runner, launcher: launcher, watcher: watcher, console: console)
+
+        try session.start()
+
+        // 子起動の env には provenance スタンプが必ず入る（CONTRACT.md frame.json v4）。
+        let env = launcher.environments.first ?? nil
+        let stamp = env?["METAPHOR_SOURCE_STAMP"]
+        XCTAssertNotNil(stamp)
+        XCTAssertEqual(stamp?.count, 16)  // 64-bit FNV-1a を %016llx で出力
+    }
+
+    func testComputeSourceStampChangesWhenSourceEdited() throws {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("metaphor-stamp-\(UUID().uuidString)")
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: dir) }
+        let src = dir.appendingPathComponent("App.swift")
+        try "let a = 1\n".write(to: src, atomically: true, encoding: .utf8)
+
+        let session = WatchSession(
+            directory: dir,
+            swiftArguments: [],
+            console: BufferedConsole(),
+            processRunner: RecordingProcessRunner(),
+            launcher: RecordingLauncher(),
+            watcher: ManualFileWatcher(),
+            binaryResolver: NullBinaryResolver()
+        )
+
+        let stamp1 = session.computeSourceStamp()
+        // 同一内容なら再現する。
+        XCTAssertEqual(stamp1, session.computeSourceStamp())
+
+        // 内容（とサイズ）を変えると刻印が変わる。
+        try "let a = 1\nlet b = 2\n".write(to: src, atomically: true, encoding: .utf8)
+        XCTAssertNotEqual(stamp1, session.computeSourceStamp())
+    }
+
     func testParseWatchArgumentsStripsViewerFlags() {
         XCTAssertEqual(parseWatchArguments(["--no-viewer"]), ParsedWatchArguments(syphonName: nil, swiftArguments: []))
         XCTAssertEqual(parseWatchArguments(["--viewer"]), ParsedWatchArguments(syphonName: nil, swiftArguments: []))
@@ -459,6 +502,11 @@ final class WatchSessionTests: XCTestCase {
 
         try session.start()
 
-        XCTAssertEqual(launcher.environments.first ?? nil, ["METAPHOR_VIEWER": "1", "METAPHOR_SYPHON_NAME": "abc"])
+        // extraEnvironment はそのまま渡る。加えて provenance スタンプが additive に注入される
+        // （CONTRACT.md frame.json v4 / METAPHOR_SOURCE_STAMP）。
+        let env = launcher.environments.first ?? nil
+        XCTAssertEqual(env?["METAPHOR_VIEWER"], "1")
+        XCTAssertEqual(env?["METAPHOR_SYPHON_NAME"], "abc")
+        XCTAssertNotNil(env?["METAPHOR_SOURCE_STAMP"])
     }
 }

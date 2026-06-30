@@ -74,13 +74,16 @@ case "$REPO" in
       id label scale frames every
     # frame.json schema keys (contract point 4).
     check "Sources/MetaphorCore/Probe/ProbeFrameMetadata.swift" \
-      schemaVersion custom customTypes warnings
+      schemaVersion sourceStamp custom customTypes warnings
     # sequence.json schema keys (contract point 4).
     check "Sources/MetaphorCore/Probe/ProbeSequenceManifest.swift" \
       frameCount requestedFrames every frames contactSheet
+    # sourceStamp provenance env var read by the probe plugin (contract point 2).
+    check "Sources/MetaphorCore/Probe/MetaphorProbePlugin.swift" \
+      METAPHOR_SOURCE_STAMP
     # Schema version VALUES — a bump here is a breaking change; CONTRACT.md must move too.
     check "Sources/MetaphorCore/Probe/MetaphorProbePlugin.swift" \
-      "schemaVersion: 3" "schemaVersion: 1"
+      "schemaVersion: 4" "schemaVersion: 1"
     # Syphon Release dispatch event_type fired to metaphor-cli (auto-bump, L2a).
     check ".github/workflows/release.yml" \
       "event_type=syphon-release"
@@ -97,6 +100,9 @@ case "$REPO" in
     # METAPHOR_FPS is also wired on the --no-viewer path.
     check "Sources/MetaphorCLICore/WatchCommand.swift" \
       METAPHOR_FPS
+    # sourceStamp provenance injected into the child env on every (re)launch (contract point 2).
+    check "Sources/MetaphorCLICore/WatchSession.swift" \
+      METAPHOR_SOURCE_STAMP
     # stdin JSON Lines input event tags emitted to the child (contract point 3).
     check "Sources/MetaphorViewer/ViewerWindow.swift" \
       mouseDown mouseUp mouseMove mouseDrag scroll keyDown keyUp
