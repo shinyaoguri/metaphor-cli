@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shinyaoguri/metaphor/contract/frame.schema.json",
+  "title": "Probe frame.json",
+  "description": "Producer (metaphor) が current/frame.json および sequence/frame.NNNN.json に書き出す単一フレームのメタデータ。Swift 型 ProbeFrameMetadata (Sources/MetaphorCore/Probe/ProbeFrameMetadata.swift) が正典。additive・前方互換を原則とし、キーのリネーム/削除/型変更は schemaVersion を上げる破壊的変更。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "frame", "time", "size", "custom", "customTypes", "warnings"],
+  "properties": {
+    "schemaVersion": {
+      "description": "スキーマバージョン。現行 = 4 (v2:stats / v3:customTypes / v4:sourceStamp)。bump は破壊的変更。",
+      "const": 4
+    },
+    "id": {
+      "description": "対応するリクエストの id を echo したもの。",
+      "type": "string"
+    },
+    "label": {
+      "description": "リクエストの任意ラベル。未指定時はキー自体が省略される。",
+      "type": "string"
+    },
+    "sourceStamp": {
+      "description": "ソース世代の刻印 (provenance)。consumer が METAPHOR_SOURCE_STAMP で注入し producer が echo する。未注入時はキー省略。v4 additive。",
+      "type": "string"
+    },
+    "frame": {
+      "description": "レンダリングされたフレーム番号。",
+      "type": "integer"
+    },
+    "time": {
+      "description": "スケッチ開始からの経過時間 (秒)。",
+      "type": "number"
+    },
+    "size": {
+      "description": "オフスクリーン解像度。",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "integer" },
+        "height": { "type": "integer" }
+      }
+    },
+    "custom": {
+      "description": "probe(_:_:) で記録されたユーザー定義値。値の型は customTypes と対応する。ベクトルは裸の配列。",
+      "type": "object"
+    },
+    "customTypes": {
+      "description": "custom の各キー -> 型タグ。裸の配列であるベクトルとスカラー配列を区別するため v3 で追加。",
+      "type": "object",
+      "additionalProperties": {
+        "enum": ["double", "int", "string", "bool", "vec2", "vec3", "vec4"]
+      }
+    },
+    "warnings": {
+      "description": "プラグインが検出した警告 (例: blank frame)。",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "stats": {
+      "description": "32x32 グリッドサンプルから 1 パスで計算する軽量画像統計。解析不能時 (テクスチャ読み出し失敗) は null。v2 additive。",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["meanColor", "meanLuminance", "contentFraction", "sampleGrid"],
+      "properties": {
+        "meanColor": {
+          "description": "サンプル平均色 [r,g,b] (各 0..1、ガンマ符号化値)。",
+          "type": "array",
+          "items": { "type": "number", "minimum": 0, "maximum": 1 },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "meanLuminance": {
+          "description": "サンプル平均輝度 (Rec.709 重み、0..1)。",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "contentFraction": {
+          "description": "背景色と十分異なるコンテンツサンプルの割合 (0..1)。",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "contentBounds": {
+          "description": "コンテンツの正規化バウンディングボックス。原点=左上、各成分 0..1 (この意味論=原点左上は description 止まりで強制されない)。コンテンツが無い場合は null。",
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["x", "y", "width", "height"],
+          "properties": {
+            "x": { "type": "number", "minimum": 0, "maximum": 1 },
+            "y": { "type": "number", "minimum": 0, "maximum": 1 },
+            "width": { "type": "number", "minimum": 0, "maximum": 1 },
+            "height": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "sampleGrid": {
+          "description": "1 辺あたりのサンプル数 (= 32)。バウンディングボックスの粒度を示す。",
+          "type": "integer"
+        }
+      }
+    }
+  }
+}

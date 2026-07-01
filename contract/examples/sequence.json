@@ -1,0 +1,30 @@
+{
+  "schemaVersion" : 1,
+  "id" : "01HXYZABCDEF0123456789",
+  "label" : "motion",
+  "frameCount" : 2,
+  "requestedFrames" : 8,
+  "every" : 2,
+  "size" : {
+    "width" : 640,
+    "height" : 480
+  },
+  "contactSheet" : "contact_sheet.png",
+  "warnings" : ["frames clamped from 8 to 2"],
+  "frames" : [
+    {
+      "index" : 0,
+      "file" : "frame.0000.png",
+      "metadata" : "frame.0000.json",
+      "frame" : 100,
+      "time" : 0.0
+    },
+    {
+      "index" : 1,
+      "file" : "frame.0001.png",
+      "metadata" : "frame.0001.json",
+      "frame" : 102,
+      "time" : 0.033
+    }
+  ]
+}

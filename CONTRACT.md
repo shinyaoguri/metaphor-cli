@@ -65,6 +65,27 @@
 - キーのリネーム／削除／型変更は **破壊的変更**。`schemaVersion` を上げ、両リポジトリの
   本節を同時に更新し、`metaphor-cli` 側に対応 Issue/PR を立てること。
 
+### wire スキーマの正典（契約点 4 の補足）
+
+`request.json` / `frame.json` / `sequence.json` の **wire 形式（JSON の構造・キー・値域・
+enum・`schemaVersion`）の正典は `contract/*.schema.json`**（JSON Schema draft 2020-12、
+両リポジトリに同一内容で置く）。Swift 実装（`Sources/MetaphorCore/Probe/`）が意味の正典で、
+スキーマはそれを機械可読に写したもの。設計判断は [docs/adr/0004-wire-schema-canon-vs-shared-types.md](docs/adr/0004-wire-schema-canon-vs-shared-types.md)
+（Issue #119 案D 不採用・案C+ 採用）と [docs/design/external-coupling-and-contract.md](docs/design/external-coupling-and-contract.md)。
+
+- **なぜ型共有ではないか**: consumer（cli）は Probe 契約型を decode せず `JSONSerialization` +
+  `[String: Any]` で `request.json` を手組みするため、共有 SwiftPM 型ではコンパイル時保証が
+  付かない。**wire schema は decode 不要で consumer の出力（`request.json`）まで機械検証できる**。
+- **検証（二段）**: `scripts/check-contract-schema.sh` が `contract/examples/*.json` を各スキーマで
+  検証（producer 出力・consumer 出力の双方の代表例）。producer 側の `ProbeSchemaConformanceTests`
+  と consumer 側のツールテストが「実装が examples からドリフトしない」ことを守る。
+- **保証されない**: 深い意味論（`contentBounds` の原点左上、`every` の既定値）は `description`
+  止まりで強制されない（本 CONTRACT.md 散文と同等）。堅く強制できるのは構造・`customTypes` の
+  `enum`・`contentBounds` の正規化範囲・`schemaVersion` の `const`。
+- `scripts/check-contract.sh`（grep）は JSON 構造の検査から降り、**非 JSON 契約点**（環境変数名・
+  `.metaphor/probe` パス・`request.json.tmp` の原子書き込み・`schemaVersion` の値・Syphon pin・
+  doc パス・stdin 入力イベント）に縮小した。
+
 ### `request.json` のアトミック書き込み（契約点 4 の補足）
 
 producer（metaphor）は `request.json` を mtime ポーリングで読み、変化したら 1 回読み取って
@@ -129,12 +150,20 @@ pin 形式・AI ドキュメントのパス/ファイル名）を変更・追加
 - **契約ドリフト検知（L2b）**: 両リポジトリの CI が `scripts/check-contract.sh`
   を実行し、合意済みトークンが期待ファイルから消えていれば落とします
   （リネーム・削除の検出）。
+- **wire スキーマ検証（L2c）**: 両リポジトリの CI が `scripts/check-contract-schema.sh`
+  を実行し、`contract/examples/*.json` が `contract/*.schema.json` に適合するか
+  `check-jsonschema` で検証します（JSON の構造・値域・enum・`schemaVersion` の検出。
+  consumer が書く `request.json` を含む）。
 - **Syphon pin 自動 bump（L2a）**: `metaphor` の安定版 Release 時に
   `repository_dispatch`（`event_type: syphon-release`）で `metaphor-cli` へ
   通知し、`metaphor-cli` 側のワークフローが `Package.swift` の URL + checksum を
   更新する PR を自動作成します。
 
 ## 関連ファイル
+
+### 両リポジトリ共通
+- `contract/*.schema.json` / `contract/examples/*.json` / `contract/README.md` — Probe wire 形式の正典（同一内容で両リポに置く）
+- `scripts/check-contract-schema.sh` — examples をスキーマで検証（同一スクリプト）
 
 ### metaphor
 - `Sources/MetaphorCore/Sketch/SketchRunner.swift` — 環境変数読み取り・headless

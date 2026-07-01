@@ -1,0 +1,13 @@
+{
+  "schemaVersion" : 4,
+  "id" : "01HXYZABCDEF0123456789",
+  "frame" : 0,
+  "time" : 0.0,
+  "size" : {
+    "width" : 640,
+    "height" : 480
+  },
+  "custom" : {},
+  "customTypes" : {},
+  "warnings" : ["frame appears nearly blank (variance=0.000001)"]
+}

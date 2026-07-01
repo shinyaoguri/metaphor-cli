@@ -69,15 +69,10 @@ case "$REPO" in
     # Probe file protocol root path (contract point 4).
     check "Sources/MetaphorCore/Probe/MetaphorProbeConfig.swift" \
       ".metaphor/probe"
-    # ProbeRequest fields the consumer writes (contract point 4).
-    check "Sources/MetaphorCore/Probe/ProbeRequest.swift" \
-      id label scale frames every
-    # frame.json schema keys (contract point 4).
-    check "Sources/MetaphorCore/Probe/ProbeFrameMetadata.swift" \
-      schemaVersion sourceStamp custom customTypes warnings
-    # sequence.json schema keys (contract point 4).
-    check "Sources/MetaphorCore/Probe/ProbeSequenceManifest.swift" \
-      frameCount requestedFrames every frames contactSheet
+    # NOTE: The JSON *structure* of request.json / frame.json / sequence.json (keys,
+    # types, value ranges, enums) is now the canon of contract/*.schema.json, verified
+    # by scripts/check-contract-schema.sh + the ProbeSchemaConformanceTests. grep here is
+    # limited to NON-JSON tokens (paths, env vars) and the schemaVersion *values* below.
     # sourceStamp provenance env var read by the probe plugin (contract point 2).
     check "Sources/MetaphorCore/Probe/MetaphorProbePlugin.swift" \
       METAPHOR_SOURCE_STAMP
@@ -110,10 +105,13 @@ case "$REPO" in
     check "Sources/MetaphorCLICore/MCP/SketchToolHandler.swift" \
       button code chars repeat dx dy capture_sequence
     # Probe request.json is written ATOMICALLY (.tmp -> rename) by both tools (contract point 4).
+    # The JSON structure of request.json/sequence.json is verified by contract/*.schema.json
+    # (check-contract-schema.sh + consumer conformance tests), so only the atomic-write token
+    # is grep'd here.
     check "Sources/MetaphorCLICore/MCP/ProbeSnapshotTool.swift" \
       "request.json.tmp"
     check "Sources/MetaphorCLICore/MCP/ProbeSequenceTool.swift" \
-      "request.json.tmp" frames every frameCount contactSheet
+      "request.json.tmp"
     # Syphon.xcframework Release pin (binaryTarget fallback) — presence + format (contract point 1).
     check "Package.swift" \
       "releases/download/v" "checksum:"

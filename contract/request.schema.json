@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shinyaoguri/metaphor/contract/request.schema.json",
+  "title": "Probe request.json",
+  "description": "Consumer (metaphor-cli の MCP snapshot / capture_sequence ツール、または任意の AI エージェント) が .metaphor/probe/request.json にアトミックに書き込むリクエスト。Producer は Swift 型 ProbeRequest (Sources/MetaphorCore/Probe/ProbeRequest.swift) としてデコードする。この契約点は consumer が出力するため、wire schema による検証が型共有より効く唯一の面。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id"],
+  "properties": {
+    "id": {
+      "description": "リクエストの一意な識別子。リクエストごとに必ず変える (producer は同一 id を再処理しない)。",
+      "type": "string"
+    },
+    "label": {
+      "description": "任意の注釈。frame.json / sequence.json にそのまま転記される。",
+      "type": "string"
+    },
+    "scale": {
+      "description": "出力画像のスケール。未指定時はプラグイン設定の defaultScale を使用。",
+      "type": "number"
+    },
+    "frames": {
+      "description": "連続キャプチャ枚数。省略または <= 1 なら単一フレーム、>= 2 なら sequence 出力。",
+      "type": "integer"
+    },
+    "every": {
+      "description": "採取間隔 (ストライド)。未指定時は 1 (毎フレーム)。既定値 1 は意味論であり schema では強制されない。",
+      "type": "integer"
+    }
+  }
+}
