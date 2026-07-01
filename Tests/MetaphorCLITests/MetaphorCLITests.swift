@@ -131,12 +131,14 @@ final class MetaphorCLITests: XCTestCase {
             let app = root.appendingPathComponent("MySketch/Sources/MySketch/App.swift")
             let package = root.appendingPathComponent("MySketch/Package.swift")
             let agents = root.appendingPathComponent("MySketch/AGENTS.md")
+            let claude = root.appendingPathComponent("MySketch/CLAUDE.md")
             let brief = root.appendingPathComponent("MySketch/PROJECT_BRIEF.md")
             let preset = root.appendingPathComponent("MySketch/Sources/MySketch/Presets/default.json")
 
             XCTAssertTrue(FileManager.default.fileExists(atPath: app.path))
             XCTAssertTrue(FileManager.default.fileExists(atPath: package.path))
             XCTAssertTrue(FileManager.default.fileExists(atPath: agents.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: claude.path))
             XCTAssertTrue(FileManager.default.fileExists(atPath: brief.path))
             XCTAssertTrue(FileManager.default.fileExists(atPath: preset.path))
 
@@ -146,6 +148,12 @@ final class MetaphorCLITests: XCTestCase {
             let agentsContents = try String(contentsOf: agents)
             XCTAssertTrue(agentsContents.contains("Sources/MySketch/App.swift"))
             XCTAssertFalse(agentsContents.contains("{{"))
+
+            // CLAUDE.md is a thin bridge so Claude Code (which reads CLAUDE.md, not
+            // AGENTS.md) picks up the same guidance via an import.
+            let claudeContents = try String(contentsOf: claude)
+            XCTAssertTrue(claudeContents.contains("@AGENTS.md"))
+            XCTAssertFalse(claudeContents.contains("{{"))
 
             let briefContents = try String(contentsOf: brief)
             XCTAssertTrue(briefContents.contains("# MySketch Brief"))
