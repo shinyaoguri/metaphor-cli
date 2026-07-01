@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shinyaoguri/metaphor/contract/sequence.schema.json",
+  "title": "Probe sequence.json",
+  "description": "Producer (metaphor) が current/sequence/sequence.json に書き出す連続フレーム列の manifest (frames >= 2 のとき)。Swift 型 ProbeSequenceManifest (Sources/MetaphorCore/Probe/ProbeSequenceManifest.swift) が正典。frame.json とは独立の schemaVersion を持ち、additive・前方互換。sequence.json を最後に原子的に書き出すのが完了規約。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "frameCount", "requestedFrames", "every", "size", "warnings", "frames"],
+  "properties": {
+    "schemaVersion": {
+      "description": "この manifest スキーマのバージョン (frame.json とは独立)。現行 = 1。bump は破壊的変更。",
+      "const": 1
+    },
+    "id": {
+      "description": "対応するリクエストの id を echo したもの。",
+      "type": "string"
+    },
+    "label": {
+      "description": "リクエストの任意ラベル。未指定時はキー省略。",
+      "type": "string"
+    },
+    "frameCount": {
+      "description": "実際に書き出したフレーム数 (クランプ・degrade 後)。frames 配列長と一致する。",
+      "type": "integer"
+    },
+    "requestedFrames": {
+      "description": "リクエストされたフレーム数 (クランプ前。透明性のため)。",
+      "type": "integer"
+    },
+    "every": {
+      "description": "採取間隔 (ストライド)。",
+      "type": "integer"
+    },
+    "size": {
+      "description": "参照解像度 (最初に採取したフレームのサイズ)。",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "integer" },
+        "height": { "type": "integer" }
+      }
+    },
+    "contactSheet": {
+      "description": "contact sheet の相対ファイル名。書けない場合はキー省略。",
+      "type": "string"
+    },
+    "warnings": {
+      "description": "シーケンス全体に対する警告 (例: noLoop により単一フレームに degrade)。",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "frames": {
+      "description": "フレームごとのエントリ (採取順)。",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["index", "file", "metadata", "frame", "time"],
+        "properties": {
+          "index": {
+            "description": "0 始まりの採取インデックス。",
+            "type": "integer"
+          },
+          "file": {
+            "description": "PNG ファイル名 (current/sequence/ からの相対)。",
+            "type": "string"
+          },
+          "metadata": {
+            "description": "メタデータ JSON ファイル名 (current/sequence/ からの相対)。",
+            "type": "string"
+          },
+          "frame": {
+            "description": "採取時点のスケッチのフレーム番号。",
+            "type": "integer"
+          },
+          "time": {
+            "description": "スケッチ開始からの経過時間 (秒、実測)。",
+            "type": "number"
+          }
+        }
+      }
+    }
+  }
+}
