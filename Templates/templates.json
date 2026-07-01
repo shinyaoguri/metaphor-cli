@@ -17,6 +17,10 @@
       "destination": "AGENTS.md"
     },
     {
+      "source": "common/CLAUDE.md.template",
+      "destination": "CLAUDE.md"
+    },
+    {
       "source": "common/mcp.json.template",
       "destination": ".mcp.json"
     },
