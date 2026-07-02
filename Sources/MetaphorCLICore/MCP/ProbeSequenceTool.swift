@@ -86,10 +86,7 @@ public final class ProbeSequenceTool {
 
         let tmp = probeRoot.appendingPathComponent("request.json.tmp")
         try data.write(to: tmp)
-        if FileManager.default.fileExists(atPath: requestPath.path) {
-            try FileManager.default.removeItem(at: requestPath)
-        }
-        try FileManager.default.moveItem(at: tmp, to: requestPath)
+        try ProbeAtomicFile.replace(tmp: tmp, final: requestPath)
     }
 
     /// sequence.json を読み、`id` 一致かつ `frames.count == frameCount` なら manifest を返す。
