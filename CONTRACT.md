@@ -39,7 +39,7 @@
 | 3 | **stdin 入力イベント（JSON Lines）**<br>キー `t` の値 `mouseDown` `mouseUp` `mouseMove` `mouseDrag` `scroll` `keyDown` `keyUp`、フィールド `x` `y` `button` `code` `chars` `repeat` `dx` `dy` | `metaphor` が解析（`InputInjectionPlugin.swift`） | `metaphor-cli` が送出（`ViewerWindow.swift`） |
 | 4 | **Probe ファイル契約**<br>`.metaphor/probe/request.json`（リクエスト）/ `.metaphor/probe/current/frame.{png,json}`（単一フレーム出力）/ `.metaphor/probe/current/sequence/`（連続フレーム出力）と `frame.json` / `sequence.json` スキーマ、`ProbeRequest` のフィールド（`id` / `label` / `scale` / `frames` / `every`） | `metaphor`（`MetaphorProbeConfig.swift` / `ProbeFrameMetadata.swift` / `ProbeSequenceManifest.swift` / `ProbeRequest.swift`） | AI エージェント・ツール（`metaphor-cli` の `snapshot` / `capture_sequence`） |
 | 5 | **Syphon サーバー名 / headless 挙動**<br>`METAPHOR_VIEWER=1` で `METAPHOR_SYPHON_NAME` のサーバーへ publish | `metaphor` headless モード（`SketchRunner.swift`） | `metaphor-cli`（`SyphonFrameSource.swift`） |
-| 6 | **AI ドキュメント生成物のパス/ファイル名**<br>`llms.txt` / `llms-sketch.txt` / `docs/ai/examples-index.{md,json}` | `metaphor` が生成（`make llms-txt` / `make examples-index`、リポジトリにコミット） | `metaphor-cli` の MCP `api_reference` ツール（`MetaphorDocsLocator.swift` / `SketchToolHandler.swift`） |
+| 6 | **AI ドキュメントのパス/ファイル名**<br>`llms.txt` / `llms-sketch.txt` / `docs/ai/examples-index.{md,json}` | `metaphor` が用意（`llms.txt` / `examples-index` は生成物＝`make llms-txt` / `make examples-index`、`llms-sketch.txt` は**手書き**。いずれもリポジトリにコミット） | `metaphor-cli` の MCP `api_reference` ツール（`MetaphorDocsLocator.swift` / `SketchToolHandler.swift`） |
 
 ### `frame.json` スキーマのバージョニング（契約点 4 の補足）
 
@@ -103,7 +103,9 @@ producer が部分書き込み途中のファイルを読む TOCTOU を防ぐ。
 
 - 出力レイアウト: `current/sequence/frame.NNNN.{png,json}`（0 始まり 4 桁ゼロ詰め）/
   `current/sequence/contact_sheet.png`（一覧モンタージュ）/ `current/sequence/sequence.json`（manifest）。
-- `ProbeRequest` の任意フィールド: `frames`（採取枚数、`<=1` で従来の単一フレーム）/
+- `ProbeRequest` の任意フィールド: `frames`（採取枚数、`<=1` で従来の単一フレーム、
+  **上限 64 にクランプ**——超過分は丸められ、manifest の `warnings[]` に
+  `frames clamped from <N> to <M> (max 64)` が載る）/
   `every`（採取間隔ストライド、既定 1）。未知フィールドは無視する（consumer 規約）。
 - `sequence.json` は独自の `schemaVersion`（現行 = 1）を持ち、`frame.json` と同じく
   **additive・前方互換**を原則とする。`frameCount` / `requestedFrames` / `every` / `size` /
@@ -128,9 +130,11 @@ producer が部分書き込み途中のファイルを読む TOCTOU を防ぐ。
 - **soft contract**: 未生成・未解決でも `api_reference` はエラーメッセージで graceful
   degrade する（クラッシュしない）。だが**ファイル名やパスのリネーム/削除**は
   `api_reference` を無言で劣化させるため、契約点として両側を揃える。
-- producer（metaphor）側はこれらが**生成・コミット済み**であることが前提。生成器
-  （`scripts/generate-llms-txt.py` / `scripts/generate-examples-index.py`）の出力先を
-  変えるときは、本表とファイル名を更新し `metaphor-cli` 側に対応 PR/Issue を立てる。
+- producer（metaphor）側はこれらが**コミット済み**であることが前提。`llms.txt` と
+  `docs/ai/examples-index.{md,json}` は生成物（`scripts/generate-llms-txt.py` /
+  `scripts/generate-examples-index.py`）、`llms-sketch.txt` は**手書き**（生成器は無い）。
+  生成物の出力先や手書きファイルの名前を変えるときは、本表とファイル名を更新し
+  `metaphor-cli` 側に対応 PR/Issue を立てる。
 
 ## 変更時のルール（エージェント・人間共通）
 
@@ -178,7 +182,7 @@ pin 形式・AI ドキュメントのパス/ファイル名）を変更・追加
 - `Sources/MetaphorCore/Sketch/SketchRunner.swift` — 環境変数読み取り・headless
 - `Sources/MetaphorCore/Input/InputInjectionPlugin.swift` — stdin JSON Lines 解析
 - `Sources/MetaphorCore/Probe/MetaphorProbeConfig.swift` / `ProbeFrameMetadata.swift` / `ProbeRequest.swift` / `ProbeSequenceManifest.swift` — Probe 契約（単一フレーム + 連続フレーム）
-- `llms.txt` / `llms-sketch.txt` / `docs/ai/examples-index.{md,json}` — AI ドキュメント生成物（契約点 6）
+- `llms.txt` / `docs/ai/examples-index.{md,json}`（生成物）・`llms-sketch.txt`（手書き）— AI ドキュメント（契約点 6）
 - `.github/workflows/release.yml` — Syphon ビルド・Release・cli への dispatch
 
 ### metaphor-cli
