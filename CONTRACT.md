@@ -96,6 +96,21 @@ producer が部分書き込み途中のファイルを読む TOCTOU を防ぐ。
 書く consumer はデコード失敗で無視される（producer は `METAPHOR_DEBUG=1` のとき stderr に
 診断を出す）。同様に **`id` はリクエストごとに必ず変える**（producer は同一 id を再処理しない）。
 
+### 失敗応答（契約点 4 の補足）
+
+producer はフレームを採取できなかったとき（staging テクスチャ確保失敗等）も**無応答にしない**。
+consumer がタイムアウトではなく id 一致で失敗を検知できるよう、次の規約で応答する:
+
+- **単一フレーム経路**: 失敗理由を `warnings[]` に載せた `frame.json` **だけ**を書く
+  （PNG は書かない）。前回応答の `frame.png` が残っていれば**削除してから** `frame.json` を
+  書く——consumer が新しい id の `frame.json` と古い画像を組にしないため。
+  wire 形式は通常の `frame.json` と同一（`contract/examples/frame-failure.json` が正典サンプル）。
+- **連続フレーム経路**: 失敗理由を `warnings[]` に載せた `sequence.json`（manifest）で応答する
+  （従来どおり）。
+- **consumer 規約**: id が一致する `frame.json` に対して `frame.png` が存在しなければ
+  失敗応答である。`warnings[]` を失敗理由としてエージェントへ返すこと
+  （タイムアウトまで待つ必要はない）。
+
 ### 連続フレーム出力 `sequence/`（契約点 4 の補足）
 
 `request.json` に `frames >= 2` を指定すると、単一フレームの `current/frame.{png,json}`

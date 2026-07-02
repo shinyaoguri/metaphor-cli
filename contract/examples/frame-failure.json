@@ -1,0 +1,13 @@
+{
+  "schemaVersion" : 4,
+  "id" : "01HXYZABCDEF0123456789",
+  "frame" : 42,
+  "time" : 1.234,
+  "size" : {
+    "width" : 1280,
+    "height" : 720
+  },
+  "custom" : {},
+  "customTypes" : {},
+  "warnings" : ["failed to allocate staging texture; frame.png was not written"]
+}

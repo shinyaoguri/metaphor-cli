@@ -72,10 +72,7 @@ public final class ProbeSnapshotTool {
 
         let tmp = probeRoot.appendingPathComponent("request.json.tmp")
         try data.write(to: tmp)
-        if FileManager.default.fileExists(atPath: requestPath.path) {
-            try FileManager.default.removeItem(at: requestPath)
-        }
-        try FileManager.default.moveItem(at: tmp, to: requestPath)
+        try ProbeAtomicFile.replace(tmp: tmp, final: requestPath)
     }
 
     /// frame.json を読み、その `id` がリクエストと一致すればメタデータを返す。
@@ -94,7 +91,8 @@ public final class ProbeSnapshotTool {
     private func buildResult(metadata: [String: Any]) -> MCPToolResult {
         var content: [[String: Any]] = []
 
-        if let png = try? Data(contentsOf: framePNGPath) {
+        let png = try? Data(contentsOf: framePNGPath)
+        if let png {
             content.append([
                 "type": "image",
                 "data": png.base64EncodedString(),
@@ -114,6 +112,9 @@ public final class ProbeSnapshotTool {
         if content.isEmpty {
             return .text("snapshot: frame.png / frame.json を読めませんでした", isError: true)
         }
-        return MCPToolResult(content: content, isError: false)
+        // 失敗応答（CONTRACT.md 契約点 4「失敗応答」）: id が一致する frame.json に
+        // frame.png が伴わないのは producer の採取失敗。warnings を失敗理由として
+        // エラーで返す（タイムアウトまで待たない）。
+        return MCPToolResult(content: content, isError: png == nil)
     }
 }
