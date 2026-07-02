@@ -154,6 +154,13 @@ pin 形式・AI ドキュメントのパス/ファイル名）を変更・追加
   を実行し、`contract/examples/*.json` が `contract/*.schema.json` に適合するか
   `check-jsonschema` で検証します（JSON の構造・値域・enum・`schemaVersion` の検出。
   consumer が書く `request.json` を含む）。
+- **byte-identity 検証（L2d）**: 両リポジトリの CI が `scripts/check-contract-identity.sh`
+  を実行し、「両リポで同一内容」と宣言されたファイル群 — `CONTRACT.md`・
+  `contract/` 配下全ファイル（`README.md` / `*.schema.json` / `examples/*.json`）・
+  共有スクリプト（`check-contract.sh` / `check-contract-schema.sh` /
+  `check-contract-identity.sh` 自身）— を他方のリポジトリと byte 単位で比較します
+  （同名ブランチ優先・既定ブランチへフォールバック。片側のみの追加・削除も検出）。
+  対になる変更は**両リポで同名ブランチ**の PR にすること。
 - **Syphon pin 自動 bump（L2a）**: `metaphor` の安定版 Release 時に
   `repository_dispatch`（`event_type: syphon-release`）で `metaphor-cli` へ
   通知し、`metaphor-cli` 側のワークフローが `Package.swift` の URL + checksum を
@@ -163,7 +170,9 @@ pin 形式・AI ドキュメントのパス/ファイル名）を変更・追加
 
 ### 両リポジトリ共通
 - `contract/*.schema.json` / `contract/examples/*.json` / `contract/README.md` — Probe wire 形式の正典（同一内容で両リポに置く）
+- `scripts/check-contract.sh` — 非 JSON 契約点のトークン存在チェック（同一スクリプト）
 - `scripts/check-contract-schema.sh` — examples をスキーマで検証（同一スクリプト）
+- `scripts/check-contract-identity.sh` — 上記すべて＋自分自身の byte-identity を検証（同一スクリプト）
 
 ### metaphor
 - `Sources/MetaphorCore/Sketch/SketchRunner.swift` — 環境変数読み取り・headless
