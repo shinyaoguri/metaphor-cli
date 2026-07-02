@@ -58,7 +58,7 @@
       "items": { "type": "string" }
     },
     "stats": {
-      "description": "32x32 グリッドサンプルから 1 パスで計算する軽量画像統計。解析不能時 (テクスチャ読み出し失敗) は null。v2 additive。",
+      "description": "32x32 グリッドサンプルから 1 パスで計算する軽量画像統計。解析不能時 (テクスチャ読み出し失敗) はキー省略 (実装は encodeIfPresent。null 許容型は後方互換のため残す)。v2 additive。",
       "type": ["object", "null"],
       "additionalProperties": false,
       "required": ["meanColor", "meanLuminance", "contentFraction", "sampleGrid"],
@@ -83,7 +83,7 @@
           "maximum": 1
         },
         "contentBounds": {
-          "description": "コンテンツの正規化バウンディングボックス。原点=左上、各成分 0..1 (この意味論=原点左上は description 止まりで強制されない)。コンテンツが無い場合は null。",
+          "description": "コンテンツの正規化バウンディングボックス。原点=左上、各成分 0..1 (この意味論=原点左上は description 止まりで強制されない)。コンテンツが無い (blank) 場合はキー省略 (実装は encodeIfPresent。null 許容型は後方互換のため残す)。",
           "type": ["object", "null"],
           "additionalProperties": false,
           "required": ["x", "y", "width", "height"],
