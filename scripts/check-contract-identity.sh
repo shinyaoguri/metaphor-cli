@@ -1,22 +1,36 @@
 #!/usr/bin/env bash
 #
-# Cross-repo CONTRACT.md byte-identity check (metaphor <-> metaphor-cli).
+# Cross-repo byte-identity check (metaphor <-> metaphor-cli).
 #
-# CONTRACT.md must be byte-identical in both repositories. The token-presence
-# check in check-contract.sh does NOT catch the case where CONTRACT.md itself is
-# edited on only one side, so this script downloads the other repo's CONTRACT.md
-# and diffs it against the local copy.
+# The contract between the two repositories is carried by files that are
+# declared "kept identical in both repositories" (CONTRACT.md and
+# contract/README.md). The token-presence check in check-contract.sh does NOT
+# catch the case where such a file is edited on only one side, so this script
+# downloads each of them from the other repo and diffs it against the local
+# copy. The identity set (Issue #139):
 #
-# Coordinated edits: a CONTRACT.md change must land in both repos together. To
-# avoid a deadlock where each PR's CI compares against the other repo's (still
-# old) default branch, we first try the sibling repo's branch with the SAME name
-# as the current branch, and only fall back to its default branch.
+#   - CONTRACT.md
+#   - contract/**  (README.md, *.schema.json, examples/*.json)
+#   - scripts/check-contract.sh
+#   - scripts/check-contract-schema.sh
+#   - scripts/check-contract-identity.sh  (this script itself)
+#
+# The contract/ part of the list is the UNION of both repositories' listings,
+# so a file added or deleted on only one side is reported as well.
+#
+# Coordinated edits: a change to any of these files must land in both repos
+# together. To avoid a deadlock where each PR's CI compares against the other
+# repo's (still old) default branch, we first try the sibling repo's branch
+# with the SAME name as the current branch, and only fall back to its default
+# branch. Note the push-to-main CI run of whichever repo merges FIRST still
+# compares against the other repo's old default branch and fails — merge the
+# paired PRs back to back and re-run that one job.
 #
 # Requires the `gh` CLI authenticated (GITHUB_TOKEN is available by default in
 # GitHub Actions). Run from either repository — it auto-detects which one.
 #
 # This script is kept IDENTICAL in both repositories. If you edit it, copy the
-# change to the other repo too.
+# change to the other repo too (CI enforces this).
 #
 set -euo pipefail
 
@@ -32,48 +46,92 @@ else
   OTHER_REPO="$OWNER/metaphor-cli"
 fi
 
-if [ ! -f CONTRACT.md ]; then
-  echo "::error::CONTRACT.md missing in this repository."
-  exit 1
-fi
-
 if ! command -v gh >/dev/null 2>&1; then
-  echo "warning: gh CLI not found — skipping cross-repo CONTRACT.md identity check."
+  echo "warning: gh CLI not found — skipping cross-repo identity check."
   exit 0
 fi
 
 # Current branch: prefer the CI-provided PR head, else the local git branch.
 BRANCH="${GITHUB_HEAD_REF:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")}"
 
+# Resolve the comparison ref ONCE so every file comes from the same ref: the
+# sibling repo's same-named branch if it exists, else its default branch.
+REF=""
+source_desc="$OTHER_REPO (default branch)"
+if [ -n "$BRANCH" ] && gh api "repos/$OTHER_REPO/branches/$BRANCH" --jq '.name' >/dev/null 2>&1; then
+  REF="$BRANCH"
+  source_desc="$OTHER_REPO@$BRANCH"
+fi
+
+# gh api path for a file or directory at the resolved ref.
+api_path() {
+  local p="repos/$OTHER_REPO/contents/$1"
+  [ -n "$REF" ] && p="$p?ref=$REF"
+  printf '%s' "$p"
+}
+
+# List the files directly under a directory on the other repo (no recursion).
+list_remote_dir() {
+  gh api "$(api_path "$1")" --jq '.[] | select(.type == "file") | .path' 2>/dev/null || true
+}
+
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
 
-# Fetch CONTRACT.md from the other repo at an optional ref. Writes to $tmp and
-# returns success only on a non-empty result.
-fetch_contract() {
-  local ref="$1" path="repos/$OTHER_REPO/contents/CONTRACT.md"
-  [ -n "$ref" ] && path="$path?ref=$ref"
-  gh api "$path" --jq '.content' 2>/dev/null | base64 -d > "$tmp" 2>/dev/null
+# Fetch one file from the other repo into $tmp. Succeeds only on a non-empty
+# result (none of the identity files is legitimately empty).
+fetch_remote() {
+  gh api "$(api_path "$1")" --jq '.content' 2>/dev/null | base64 -d > "$tmp" 2>/dev/null
   [ -s "$tmp" ]
 }
 
-source_desc=""
-if [ -n "$BRANCH" ] && fetch_contract "$BRANCH"; then
-  source_desc="$OTHER_REPO@$BRANCH"
-elif fetch_contract ""; then
-  source_desc="$OTHER_REPO (default branch)"
-else
-  echo "warning: could not fetch CONTRACT.md from $OTHER_REPO (auth/network/visibility?) — skipping identity check."
+# Connectivity probe: CONTRACT.md exists in both repos on every ref. If it
+# cannot be fetched at all, degrade to a warning (auth/network/visibility)
+# instead of failing, matching the original CONTRACT.md-only check.
+if ! fetch_remote "CONTRACT.md"; then
+  echo "warning: could not fetch CONTRACT.md from $source_desc (auth/network/visibility?) — skipping identity check."
   echo "         To enable this check for private repos, provide a token with read access to $OTHER_REPO."
   exit 0
 fi
 
-if diff -q CONTRACT.md "$tmp" >/dev/null; then
-  echo "CONTRACT.md is byte-identical to $source_desc."
-  exit 0
+FILES="$(
+  {
+    printf '%s\n' \
+      CONTRACT.md \
+      scripts/check-contract.sh \
+      scripts/check-contract-schema.sh \
+      scripts/check-contract-identity.sh
+    find contract -type f 2>/dev/null || true
+    list_remote_dir contract
+    list_remote_dir contract/examples
+  } | sort -u
+)"
+
+failures=0
+while IFS= read -r file; do
+  if [ ! -f "$file" ]; then
+    echo "::error::$file exists in $source_desc but not in this repository."
+    failures=$((failures + 1))
+    continue
+  fi
+  if ! fetch_remote "$file"; then
+    echo "::error::$file exists in this repository but could not be fetched from $source_desc (missing on the other side?)."
+    failures=$((failures + 1))
+    continue
+  fi
+  if diff -q "$file" "$tmp" >/dev/null; then
+    echo "ok: $file is byte-identical to $source_desc."
+  else
+    echo "::error::$file differs from $source_desc. Sync both repos (see CONTRACT.md change rules)."
+    echo "--- diff: $file (local vs $source_desc) ---"
+    diff "$file" "$tmp" || true
+    failures=$((failures + 1))
+  fi
+done <<< "$FILES"
+
+if [ "$failures" -gt 0 ]; then
+  echo "::error::$failures file(s) violate cross-repo byte-identity with $source_desc."
+  exit 1
 fi
 
-echo "::error::CONTRACT.md differs from $source_desc. Sync both repos (see CONTRACT.md change rules)."
-echo "--- diff (local vs $source_desc) ---"
-diff CONTRACT.md "$tmp" || true
-exit 1
+echo "All shared contract files are byte-identical to $source_desc."
