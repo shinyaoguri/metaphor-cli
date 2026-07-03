@@ -39,7 +39,7 @@
 | 3 | **stdin 入力イベント（JSON Lines）**<br>キー `t` の値 `mouseDown` `mouseUp` `mouseMove` `mouseDrag` `scroll` `keyDown` `keyUp`、フィールド `x` `y` `button` `code` `chars` `repeat` `dx` `dy` | `metaphor` が解析（`InputInjectionPlugin.swift`） | `metaphor-cli` が送出（`ViewerWindow.swift`） |
 | 4 | **Probe ファイル契約**<br>`.metaphor/probe/request.json`（リクエスト）/ `.metaphor/probe/current/frame.{png,json}`（単一フレーム出力）/ `.metaphor/probe/current/sequence/`（連続フレーム出力）と `frame.json` / `sequence.json` スキーマ、`ProbeRequest` のフィールド（`id` / `label` / `scale` / `frames` / `every`） | `metaphor`（`MetaphorProbeConfig.swift` / `ProbeFrameMetadata.swift` / `ProbeSequenceManifest.swift` / `ProbeRequest.swift`） | AI エージェント・ツール（`metaphor-cli` の `snapshot` / `capture_sequence`） |
 | 5 | **Syphon サーバー名 / headless 挙動**<br>`METAPHOR_VIEWER=1` で `METAPHOR_SYPHON_NAME` のサーバーへ publish | `metaphor` headless モード（`SketchRunner.swift`） | `metaphor-cli`（`SyphonFrameSource.swift`） |
-| 6 | **AI ドキュメント生成物のパス/ファイル名**<br>`llms.txt` / `llms-sketch.txt` / `docs/ai/examples-index.{md,json}` | `metaphor` が生成（`make llms-txt` / `make examples-index`、リポジトリにコミット） | `metaphor-cli` の MCP `api_reference` ツール（`MetaphorDocsLocator.swift` / `SketchToolHandler.swift`） |
+| 6 | **AI ドキュメントのパス/ファイル名**<br>`llms.txt` / `llms-sketch.txt` / `docs/ai/examples-index.{md,json}` | `metaphor` が用意（`llms.txt` / `examples-index` は生成物＝`make llms-txt` / `make examples-index`、`llms-sketch.txt` は**手書き**。いずれもリポジトリにコミット） | `metaphor-cli` の MCP `api_reference` ツール（`MetaphorDocsLocator.swift` / `SketchToolHandler.swift`） |
 
 ### `frame.json` スキーマのバージョニング（契約点 4 の補足）
 
@@ -96,6 +96,21 @@ producer が部分書き込み途中のファイルを読む TOCTOU を防ぐ。
 書く consumer はデコード失敗で無視される（producer は `METAPHOR_DEBUG=1` のとき stderr に
 診断を出す）。同様に **`id` はリクエストごとに必ず変える**（producer は同一 id を再処理しない）。
 
+### 失敗応答（契約点 4 の補足）
+
+producer はフレームを採取できなかったとき（staging テクスチャ確保失敗等）も**無応答にしない**。
+consumer がタイムアウトではなく id 一致で失敗を検知できるよう、次の規約で応答する:
+
+- **単一フレーム経路**: 失敗理由を `warnings[]` に載せた `frame.json` **だけ**を書く
+  （PNG は書かない）。前回応答の `frame.png` が残っていれば**削除してから** `frame.json` を
+  書く——consumer が新しい id の `frame.json` と古い画像を組にしないため。
+  wire 形式は通常の `frame.json` と同一（`contract/examples/frame-failure.json` が正典サンプル）。
+- **連続フレーム経路**: 失敗理由を `warnings[]` に載せた `sequence.json`（manifest）で応答する
+  （従来どおり）。
+- **consumer 規約**: id が一致する `frame.json` に対して `frame.png` が存在しなければ
+  失敗応答である。`warnings[]` を失敗理由としてエージェントへ返すこと
+  （タイムアウトまで待つ必要はない）。
+
 ### 連続フレーム出力 `sequence/`（契約点 4 の補足）
 
 `request.json` に `frames >= 2` を指定すると、単一フレームの `current/frame.{png,json}`
@@ -103,7 +118,9 @@ producer が部分書き込み途中のファイルを読む TOCTOU を防ぐ。
 
 - 出力レイアウト: `current/sequence/frame.NNNN.{png,json}`（0 始まり 4 桁ゼロ詰め）/
   `current/sequence/contact_sheet.png`（一覧モンタージュ）/ `current/sequence/sequence.json`（manifest）。
-- `ProbeRequest` の任意フィールド: `frames`（採取枚数、`<=1` で従来の単一フレーム）/
+- `ProbeRequest` の任意フィールド: `frames`（採取枚数、`<=1` で従来の単一フレーム、
+  **上限 64 にクランプ**——超過分は丸められ、manifest の `warnings[]` に
+  `frames clamped from <N> to <M> (max 64)` が載る）/
   `every`（採取間隔ストライド、既定 1）。未知フィールドは無視する（consumer 規約）。
 - `sequence.json` は独自の `schemaVersion`（現行 = 1）を持ち、`frame.json` と同じく
   **additive・前方互換**を原則とする。`frameCount` / `requestedFrames` / `every` / `size` /
@@ -128,9 +145,11 @@ producer が部分書き込み途中のファイルを読む TOCTOU を防ぐ。
 - **soft contract**: 未生成・未解決でも `api_reference` はエラーメッセージで graceful
   degrade する（クラッシュしない）。だが**ファイル名やパスのリネーム/削除**は
   `api_reference` を無言で劣化させるため、契約点として両側を揃える。
-- producer（metaphor）側はこれらが**生成・コミット済み**であることが前提。生成器
-  （`scripts/generate-llms-txt.py` / `scripts/generate-examples-index.py`）の出力先を
-  変えるときは、本表とファイル名を更新し `metaphor-cli` 側に対応 PR/Issue を立てる。
+- producer（metaphor）側はこれらが**コミット済み**であることが前提。`llms.txt` と
+  `docs/ai/examples-index.{md,json}` は生成物（`scripts/generate-llms-txt.py` /
+  `scripts/generate-examples-index.py`）、`llms-sketch.txt` は**手書き**（生成器は無い）。
+  生成物の出力先や手書きファイルの名前を変えるときは、本表とファイル名を更新し
+  `metaphor-cli` 側に対応 PR/Issue を立てる。
 
 ## 変更時のルール（エージェント・人間共通）
 
@@ -154,6 +173,13 @@ pin 形式・AI ドキュメントのパス/ファイル名）を変更・追加
   を実行し、`contract/examples/*.json` が `contract/*.schema.json` に適合するか
   `check-jsonschema` で検証します（JSON の構造・値域・enum・`schemaVersion` の検出。
   consumer が書く `request.json` を含む）。
+- **byte-identity 検証（L2d）**: 両リポジトリの CI が `scripts/check-contract-identity.sh`
+  を実行し、「両リポで同一内容」と宣言されたファイル群 — `CONTRACT.md`・
+  `contract/` 配下全ファイル（`README.md` / `*.schema.json` / `examples/*.json`）・
+  共有スクリプト（`check-contract.sh` / `check-contract-schema.sh` /
+  `check-contract-identity.sh` 自身）— を他方のリポジトリと byte 単位で比較します
+  （同名ブランチ優先・既定ブランチへフォールバック。片側のみの追加・削除も検出）。
+  対になる変更は**両リポで同名ブランチ**の PR にすること。
 - **Syphon pin 自動 bump（L2a）**: `metaphor` の安定版 Release 時に
   `repository_dispatch`（`event_type: syphon-release`）で `metaphor-cli` へ
   通知し、`metaphor-cli` 側のワークフローが `Package.swift` の URL + checksum を
@@ -163,13 +189,15 @@ pin 形式・AI ドキュメントのパス/ファイル名）を変更・追加
 
 ### 両リポジトリ共通
 - `contract/*.schema.json` / `contract/examples/*.json` / `contract/README.md` — Probe wire 形式の正典（同一内容で両リポに置く）
+- `scripts/check-contract.sh` — 非 JSON 契約点のトークン存在チェック（同一スクリプト）
 - `scripts/check-contract-schema.sh` — examples をスキーマで検証（同一スクリプト）
+- `scripts/check-contract-identity.sh` — 上記すべて＋自分自身の byte-identity を検証（同一スクリプト）
 
 ### metaphor
 - `Sources/MetaphorCore/Sketch/SketchRunner.swift` — 環境変数読み取り・headless
 - `Sources/MetaphorCore/Input/InputInjectionPlugin.swift` — stdin JSON Lines 解析
 - `Sources/MetaphorCore/Probe/MetaphorProbeConfig.swift` / `ProbeFrameMetadata.swift` / `ProbeRequest.swift` / `ProbeSequenceManifest.swift` — Probe 契約（単一フレーム + 連続フレーム）
-- `llms.txt` / `llms-sketch.txt` / `docs/ai/examples-index.{md,json}` — AI ドキュメント生成物（契約点 6）
+- `llms.txt` / `docs/ai/examples-index.{md,json}`（生成物）・`llms-sketch.txt`（手書き）— AI ドキュメント（契約点 6）
 - `.github/workflows/release.yml` — Syphon ビルド・Release・cli への dispatch
 
 ### metaphor-cli

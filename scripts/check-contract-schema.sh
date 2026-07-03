@@ -50,7 +50,7 @@ validate() {
   done
 }
 
-validate frame.schema.json    contract/examples/frame.json contract/examples/frame-minimal.json
+validate frame.schema.json    contract/examples/frame.json contract/examples/frame-minimal.json contract/examples/frame-failure.json
 validate request.schema.json  contract/examples/request.json contract/examples/request-minimal.json
 validate sequence.schema.json contract/examples/sequence.json
 
