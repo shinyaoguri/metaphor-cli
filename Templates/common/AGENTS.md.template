@@ -47,7 +47,8 @@ library at `{{METAPHOR_AI_DOCS_PATH}}`:
 - `{{METAPHOR_AI_DOCS_PATH}}/llms.txt`
 - `{{METAPHOR_AI_DOCS_PATH}}/docs/ai/examples-index.md`
 
-(For a release-pinned dependency the path appears only after the first `swift build`.)
+(For a release-pinned dependency this path appears once dependencies are
+resolved; `metaphor new` resolves them for you, or run `swift package resolve`.)
 
 ## Run commands
 

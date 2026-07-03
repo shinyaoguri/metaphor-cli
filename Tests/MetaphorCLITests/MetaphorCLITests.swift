@@ -161,6 +161,61 @@ final class MetaphorCLITests: XCTestCase {
         }
     }
 
+    func testNewCommandResolvesDependenciesByDefault() throws {
+        try withSourceTemplates {
+            let root = temporaryDirectory()
+            let runner = RecordingProcessRunner()
+            let tool = CommandLineTool(
+                console: BufferedConsole(),
+                processRunner: runner,
+                currentDirectory: root
+            )
+
+            try tool.run(arguments: [
+                "new", "MySketch",
+                "--metaphor-path", "/Users/so/Repos/metaphor",
+            ])
+
+            // Resolving up front checks out metaphor so `api_reference` can read
+            // its docs before the first build.
+            let resolve = try XCTUnwrap(
+                runner.invocations.first { $0.arguments == ["swift", "package", "resolve"] },
+                "new should resolve dependencies so the API reference is ready"
+            )
+            XCTAssertEqual(resolve.executable, "/usr/bin/env")
+            XCTAssertEqual(
+                resolve.currentDirectory?.path,
+                root.appendingPathComponent("MySketch").path
+            )
+        }
+    }
+
+    func testNewCommandNoResolveSkipsResolution() throws {
+        try withSourceTemplates {
+            let root = temporaryDirectory()
+            let runner = RecordingProcessRunner()
+            let tool = CommandLineTool(
+                console: BufferedConsole(),
+                processRunner: runner,
+                currentDirectory: root
+            )
+
+            try tool.run(arguments: [
+                "new", "MySketch",
+                "--metaphor-path", "/Users/so/Repos/metaphor",
+                "--no-resolve",
+            ])
+
+            XCTAssertFalse(
+                runner.invocations.contains { $0.arguments == ["swift", "package", "resolve"] },
+                "--no-resolve should skip swift package resolve"
+            )
+            // The project is still generated even when resolution is skipped.
+            XCTAssertTrue(FileManager.default.fileExists(
+                atPath: root.appendingPathComponent("MySketch/Package.swift").path))
+        }
+    }
+
     func testUpdateLibraryDryRun() throws {
         let root = temporaryDirectory()
         try """
