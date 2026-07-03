@@ -16,7 +16,7 @@ metaphor run
 
 - `metaphor new` で SwiftPM ベースのスケッチプロジェクトを作成
 - `2d`、`3d`、`shader`、`live`、`audio-reactive`、`raytracing`、`syphon` テンプレートを提供
-- 生成プロジェクトに `AGENTS.md` と `PROJECT_BRIEF.md` を含め、AI と制作意図を共有しやすくする
+- 生成プロジェクトに `AGENTS.md` と `PROJECT_BRIEF.md`（＋ Claude Code 向けに `AGENTS.md` を import する薄い `CLAUDE.md`）を含め、AI と制作意図を共有しやすくする
 - `metaphor run` で現在のスケッチを実行
 - `metaphor watch` でソース変更を監視し、ライブビューア窓を保ったまま再ビルド差し替え
 - `metaphor mcp` で AI エージェント（Claude Code / Cursor 等）向けの MCP サーバを提供し、実行中のスケッチを観測させる（[AI と協調する](#ai-と協調する)）
@@ -43,7 +43,9 @@ metaphor run
 
 生成されるプロジェクトは通常の Swift Package なので、`swift run` でも実行できます。
 また、生成プロジェクトには AI アシスタント向けの `AGENTS.md` と、制作意図を短く保つ
-`PROJECT_BRIEF.md` が含まれます。
+`PROJECT_BRIEF.md` が含まれます。`AGENTS.md` を単一の真実源としつつ、Claude Code は
+`CLAUDE.md` しか自動読込しないため、`@AGENTS.md` を import するだけの薄い `CLAUDE.md`
+も同梱し、どのクライアントでも同じガイドが自動でコンテキストに載るようにしています。
 Homebrew を使わない導線は [Install](#install) を参照してください。
 
 ## Requirements

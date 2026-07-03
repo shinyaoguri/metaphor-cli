@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 public struct NewCommand {
@@ -117,12 +118,23 @@ public struct NewCommand {
             throw error
         }
 
+        console.write("Created \(projectName)\(inPlace ? " (in place)" : "") using the \(template.rawValue) template.")
+
+        // Resolve dependencies now so the metaphor package is checked out
+        // immediately. For a remote (url) dependency this is what creates
+        // `.build/checkouts/metaphor`, where `metaphor mcp`'s `api_reference`
+        // tool finds the API docs — so an AI assistant can read the API before
+        // the first build instead of hitting an unresolved-library error. Opt
+        // out with --no-resolve (offline / faster scaffolding).
+        if !options.flag("no-resolve") {
+            resolveDependencies(in: projectURL)
+        }
+
         // Lead with the metaphor-cli dev loop (live viewer + hot reload), which is
         // the whole point of the tool; `metaphor run` is the one-shot alternative.
         let devHint = "  metaphor watch        # live viewer + hot reload (one-shot: metaphor run)"
         let nextSteps = inPlace ? devHint : "  cd \(projectURL.path)\n\(devHint)"
         console.write("""
-        Created \(projectName)\(inPlace ? " (in place)" : "") using the \(template.rawValue) template.
 
         Next:
         \(nextSteps)
@@ -213,6 +225,40 @@ public struct NewCommand {
         }
     }
 
+    /// Resolves the freshly generated project's dependencies so the metaphor
+    /// package is materialized right away. For a remote (url) dependency this is
+    /// what creates `<project>/.build/checkouts/metaphor`, where `api_reference`
+    /// reads `llms.txt` / `llms-sketch.txt` / `docs/ai/examples-index.md`; for a
+    /// local (path) dependency the docs are already on disk, but resolving still
+    /// leaves the project ready to build.
+    ///
+    /// Best-effort: the project is already valid on disk, so a failure here
+    /// (e.g. offline) is a warning, never fatal — `metaphor watch` / `metaphor
+    /// run` resolve on the first build anyway.
+    private func resolveDependencies(in projectURL: URL) {
+        console.write("\nResolving dependencies so metaphor's API reference is ready…")
+        // Flush our buffered stdout before the child streams to the inherited
+        // stdout: when output is piped/redirected `print` is fully buffered, so
+        // without this swift's fetch log would jumble ahead of our own lines.
+        fflush(stdout)
+        let hint = "`metaphor watch` / `metaphor run` will resolve them on the first build."
+        do {
+            // Stream swift's own progress (captureOutput: false); the fetch can
+            // take a moment and silence would look like a hang.
+            let result = try processRunner.run(
+                executable: "/usr/bin/env",
+                arguments: ["swift", "package", "resolve"],
+                currentDirectory: projectURL,
+                captureOutput: false
+            )
+            if result.exitCode != 0 {
+                console.writeError("warning: swift package resolve exited \(result.exitCode). \(hint)")
+            }
+        } catch {
+            console.writeError("warning: could not run swift package resolve: \(error.localizedDescription). \(hint)")
+        }
+    }
+
     private func initializeGitRepository(at url: URL) throws {
         let result = try processRunner.run(
             executable: "/usr/bin/env",
@@ -253,6 +299,7 @@ public struct NewCommand {
       --metaphor-package <name>    Package identity for the metaphor product, default: metaphor
       --git                       Run git init after generation
       --force                     Overwrite existing files in the destination
+      --no-resolve                Skip `swift package resolve` after generation (offline / faster)
 
     Templates:
     \(ProjectTemplate.usageList)
