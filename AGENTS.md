@@ -1,8 +1,18 @@
 # AGENTS.md
 
 `metaphor-cli` は `metaphor`（Swift 製クリエイティブコーディングライブラリ）の
-コマンドラインフロントエンド。スケッチの作成・ビルド・実行（`run` / `watch`）と、
-Syphon 経由のライブビューア（`watch --viewer`）を提供する。macOS (Apple Silicon) 専用。
+コマンドラインフロントエンド。スケッチの作成（`new` / `init`）・実行（`run`）・
+ライブリロード（`watch`。既定で Syphon 経由のライブビューア窓を常設）・
+AI エージェント向け MCP サーバ（`mcp`）・環境診断（`doctor`）・更新（`update`）を
+提供する。macOS (Apple Silicon) 専用。
+
+## ドキュメント階層
+
+- **README.md** — 利用者向け。インストール・全コマンド・AI 協調（MCP）の正典
+- **DEVELOPMENT.md** — CLI 開発者向け。プロジェクト構成・新規コマンド/MCP ツール追加・direnv 切替・テンプレート編集
+- **CONTRACT.md** — metaphor ⇄ metaphor-cli のクロスリポ契約（両リポに同一内容）
+- **docs/homebrew.md** — Homebrew tap / Formula のリリース手順
+- **AGENTS.md（本ファイル）** — エージェント作業の起点。`CLAUDE.md` は本ファイルを import する薄いラッパー
 
 ## Build / Test
 
