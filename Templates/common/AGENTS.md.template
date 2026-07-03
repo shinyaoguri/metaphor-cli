@@ -90,3 +90,17 @@ Probe is enabled automatically under `metaphor watch` and `metaphor mcp`.
 - Keep `draw()` frame-safe: avoid repeated disk I/O, heavy allocation, or blocking work.
 - When changing visuals, preserve the sketch's stated intent in `PROJECT_BRIEF.md`.
 - If a build fails, fix the first compiler error before making broad rewrites (`build_status` shows it).
+
+## Feedback and bug reports
+
+metaphor is still evolving — problems and rough edges are expected. If you (or the
+user) hit a bug, a confusing error, unclear documentation, or have an improvement
+idea, please report it casually — small findings are welcome:
+
+- **metaphor (library: drawing, API, rendering)**: https://github.com/shinyaoguri/metaphor/issues
+- **metaphor-cli (CLI: new/watch/mcp, templates, this file)**: https://github.com/shinyaoguri/metaphor-cli/issues
+
+Include the sketch code (or a minimal repro), the exact error output, and
+`metaphor doctor` output. As an AI agent you can file it directly with
+`gh issue create` when the user agrees — offer to do so when you notice an issue
+that looks like a library or CLI problem rather than a sketch problem.

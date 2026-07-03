@@ -399,3 +399,22 @@ make install                 # release ビルドを ~/.local に導入
 - **`metaphor update` が固まる** — GitHub への通信待ち（最大 60 秒でタイムアウト）。
   ネットワーク到達性を確認してください。Homebrew 導入版は `brew upgrade` を案内します。
 - **環境診断** — `metaphor doctor` で Swift / Xcode / テンプレートの状態を確認できます。
+
+## フィードバック / Issue 報告
+
+metaphor-cli はまだ発展途上です。問題や改善のアイデアを見つけたら、
+小さなことでも **気軽に [Issues](https://github.com/shinyaoguri/metaphor-cli/issues) へ報告・提案してください**。
+「この説明が分かりにくい」「エラーメッセージが不親切」「こんなテンプレートが欲しい」といった声も歓迎です。
+
+バグ報告には次があると助かります:
+
+- `metaphor doctor` の出力（環境情報がまとまっています）
+- 実行したコマンドと、そのときのターミナル出力（`[watch]` ログなど）
+- 期待した動作と実際の動作
+
+描画やライブラリ API に関する問題は
+[metaphor 本体の Issues](https://github.com/shinyaoguri/metaphor/issues) へ。
+どちらか迷ったら、こちら（metaphor-cli）に立ててもらえれば適切に振り分けます。
+
+AI エージェント経由で使っている場合も同様です — エージェントに
+「この問題を GitHub Issue として報告して」と頼めば、再現手順つきで起票できます。
