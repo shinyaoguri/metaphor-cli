@@ -53,3 +53,7 @@ gh pr merge --squash   # マージで release-on-merge.yml が release.yml を d
 （tarball/Formula 生成 → `shinyaoguri/homebrew-tap` へ Formula push）。`release:*`
 ラベル無しの PR は通常マージでリリースしない。prerelease は Release workflow の
 `workflow_dispatch` で手動。Syphon pin は週次ポーリングが古ければ自動 bump PR を出す。
+
+## 気付きは Issue へ
+
+本プロジェクトはまだ問題が残っている前提で開発している。作業中に本題以外のバグ・ドキュメント不備・改善アイデアに気付いたら、**その場で直そうとせず、気軽に `gh issue create` で Issue を立てること**（重複がないか `gh issue list --search` で軽く確認）。小さな気付きの起票も歓迎で、確信が持てないものは「提案」として立ててよい。ライブラリ側（描画・API）の事象なら `shinyaoguri/metaphor` に、両リポに跨るもの（CONTRACT.md・Probe wire format・環境変数）は両方に立てて相互リンクする。
