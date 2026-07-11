@@ -76,13 +76,31 @@ list_remote_dir() {
 }
 
 tmp="$(mktemp)"
-trap 'rm -f "$tmp"' EXIT
+trap 'rm -f "$tmp" "$tmp.err"' EXIT
 
 # Fetch one file from the other repo into $tmp. Succeeds only on a non-empty
 # result (none of the identity files is legitimately empty).
+#
+# Transient API failures (5xx, secondary rate limits, network) are retried a
+# few times with backoff so that a single flaky call cannot fail CI
+# (metaphor#244 / metaphor-cli#66). HTTP 404 is a definitive "missing on the
+# other side" and is NOT retried. Return codes: 0 = fetched, 1 = missing
+# (404), 2 = still failing after retries (transient).
 fetch_remote() {
-  gh api "$(api_path "$1")" --jq '.content' 2>/dev/null | base64 -d > "$tmp" 2>/dev/null
-  [ -s "$tmp" ]
+  local path="$1" attempt
+  for attempt in 1 2 3; do
+    if gh api "$(api_path "$path")" --jq '.content' 2>"$tmp.err" | base64 -d > "$tmp" 2>/dev/null \
+        && [ -s "$tmp" ]; then
+      return 0
+    fi
+    if grep -q 'HTTP 404' "$tmp.err" 2>/dev/null; then
+      return 1
+    fi
+    if [ "$attempt" -lt 3 ]; then
+      sleep "$attempt"
+    fi
+  done
+  return 2
 }
 
 # Connectivity probe: CONTRACT.md exists in both repos on every ref. If it
@@ -114,8 +132,14 @@ while IFS= read -r file; do
     failures=$((failures + 1))
     continue
   fi
-  if ! fetch_remote "$file"; then
-    echo "::error::$file exists in this repository but could not be fetched from $source_desc (missing on the other side?)."
+  rc=0
+  fetch_remote "$file" || rc=$?
+  if [ "$rc" -eq 1 ]; then
+    echo "::error::$file exists in this repository but is missing from $source_desc (HTTP 404). Sync both repos (see CONTRACT.md change rules)."
+    failures=$((failures + 1))
+    continue
+  elif [ "$rc" -ne 0 ]; then
+    echo "::error::$file could not be fetched from $source_desc after retries (transient API error — NOT necessarily missing on the other side). Re-run this job."
     failures=$((failures + 1))
     continue
   fi
