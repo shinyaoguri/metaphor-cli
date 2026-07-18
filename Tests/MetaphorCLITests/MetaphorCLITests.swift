@@ -108,6 +108,30 @@ final class MetaphorCLITests: XCTestCase {
         }
     }
 
+    func testGitignoreTemplateIgnoresRuntimeOutputDirectories() throws {
+        try withSourceTemplates {
+            let catalog = try TemplateCatalog.loadDefault()
+            let context = TemplateContext(
+                projectName: "Demo",
+                moduleName: "Demo",
+                template: try XCTUnwrap(catalog.templates.first),
+                metaphorDependency: ".package(path: \"/Users/so/Repos/metaphor\")",
+                metaphorPackageIdentity: "metaphor",
+                metaphorAIDocsPath: "/Users/so/Repos/metaphor"
+            )
+            let files = try TemplateRenderer.files(for: context, catalog: catalog)
+            let gitignore = try XCTUnwrap(files.first { $0.path == ".gitignore" })
+            let lines = gitignore.contents.split(separator: "\n").map(String.init)
+            // Probe 出力（.metaphor/）を含む実行時生成物はすべて ignore されること
+            for runtimeDirectory in [".metaphor/", "Captures/", "Exports/"] {
+                XCTAssertTrue(
+                    lines.contains(runtimeDirectory),
+                    ".gitignore template should ignore runtime output directory \(runtimeDirectory)"
+                )
+            }
+        }
+    }
+
     func testNewCommandCreatesProjectFiles() throws {
         try withSourceTemplates {
             let root = temporaryDirectory()
