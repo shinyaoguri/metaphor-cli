@@ -119,6 +119,9 @@ public struct NewCommand {
         }
 
         console.write("Created \(projectName)\(inPlace ? " (in place)" : "") using the \(template.rawValue) template.")
+        // Surface which catalog produced the files, so a stale install's
+        // templates shadowing the expected ones is diagnosable at a glance (#69).
+        console.write("Templates: \(catalog.root.path)")
 
         // Resolve dependencies now so the metaphor package is checked out
         // immediately. For a remote (url) dependency this is what creates

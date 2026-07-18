@@ -76,11 +76,12 @@ metaphor doctor
 brew upgrade metaphor
 ```
 
-以前に direct installer や `make install` で `~/.local/bin/metaphor` を入れていた場合、Homebrew 版より先に見つかることがあります。その場合は古いバイナリを削除するか、`PATH` の順序を調整してください。
+以前に direct installer や `make install` で `~/.local/bin/metaphor` を入れていた場合、Homebrew 版より先に見つかることがあります。その場合は古いバイナリを削除するか、`PATH` の順序を調整してください。バイナリだけでなくテンプレート（`~/.local/share/metaphor`）も残るため、まとめて削除するのが安全です。
 
 ```bash
 rm -f ~/.local/bin/metaphor
 rm -rf ~/.local/libexec/metaphor
+rm -rf ~/.local/share/metaphor
 ```
 
 ### Direct Installer

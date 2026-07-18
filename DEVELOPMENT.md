@@ -174,6 +174,19 @@ Templates/
 `make install` はテンプレートを `~/.local/share/metaphor/templates` にコピーします。別の
 テンプレートセットを試す場合は `METAPHOR_TEMPLATES_PATH` を指定できます。
 
+テンプレートの検索順（`templates.json` を最初に含んだ場所が勝ち）:
+
+1. `METAPHOR_TEMPLATES_PATH`（明示オーバーライド）
+2. 実行中のバイナリに隣接する `share/metaphor/templates`（symlink 解決前 → 解決後。
+   brew は `/opt/homebrew/share/…`、direct installer は `~/.local/share/…` がここで解決される）
+3. ソースチェックアウトの `Templates/`（`#filePath` 基準。ソースから実行したときに
+   テンプレート編集を即試せる）
+4. レガシー固定パス: `~/.local/share` → `/usr/local/share` → `/opt/homebrew/share`
+
+旧インストール方式の残骸が、実行中のバイナリに同梱されたテンプレートを覆い隠さないよう、
+バイナリ隣接（2）を固定パス（4）より優先しています（#69）。`metaphor new` と
+`metaphor doctor` は使用したテンプレートの場所を表示します。
+
 ## Cross-Repo Contract
 
 `metaphor` ↔ `metaphor-cli` は環境変数名・stdin 入力イベント・Probe ファイルパス・Syphon 名・

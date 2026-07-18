@@ -40,7 +40,7 @@ public struct DoctorCommand {
         }
 
         if let catalog = try? TemplateCatalog.loadDefault() {
-            console.write("[ok] \(catalog.templates.count) project templates available")
+            console.write("[ok] \(catalog.templates.count) project templates available (\(catalog.root.path))")
         } else {
             console.write("[warn] Project templates are not available")
         }
