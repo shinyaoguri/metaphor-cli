@@ -47,10 +47,14 @@ public struct TemplateCatalog {
     }
 
     public static func loadDefault(fileManager: FileManager = .default) throws -> TemplateCatalog {
-        for root in defaultSearchRoots() where fileManager.fileExists(atPath: root.appendingPathComponent("templates.json").path) {
+        try loadFirst(from: defaultSearchRoots(), fileManager: fileManager)
+    }
+
+    static func loadFirst(from roots: [URL], fileManager: FileManager) throws -> TemplateCatalog {
+        for root in roots where fileManager.fileExists(atPath: root.appendingPathComponent("templates.json").path) {
             return try load(from: root)
         }
-        let searched = defaultSearchRoots().map(\.path).joined(separator: "\n  ")
+        let searched = roots.map(\.path).joined(separator: "\n  ")
         throw CLIError("Template catalog was not found. Searched:\n  \(searched)")
     }
 
@@ -78,10 +82,55 @@ public struct TemplateCatalog {
     }
 
     private static func defaultSearchRoots() -> [URL] {
+        searchRoots(
+            environment: ProcessInfo.processInfo.environment,
+            argv0: CommandLine.arguments.first,
+            executableURL: Bundle.main.executableURL,
+            currentDirectory: URL(fileURLWithPath: FileManager.default.currentDirectoryPath),
+            home: FileManager.default.homeDirectoryForCurrentUser
+        )
+    }
+
+    /// Template search order (first root containing templates.json wins).
+    ///
+    /// `share/` locations adjacent to the *running binary* come before the
+    /// legacy fixed paths so that leftovers of an older install method can
+    /// never shadow the templates shipped with the binary being executed —
+    /// e.g. a stale `~/.local/share/metaphor` from the direct installer
+    /// shadowing Homebrew's `/opt/homebrew/share/metaphor` (#69).
+    static func searchRoots(
+        environment: [String: String],
+        argv0: String?,
+        executableURL: URL?,
+        currentDirectory: URL,
+        home: URL
+    ) -> [URL] {
         var roots: [URL] = []
 
-        if let override = ProcessInfo.processInfo.environment["METAPHOR_TEMPLATES_PATH"], !override.isEmpty {
+        if let override = environment["METAPHOR_TEMPLATES_PATH"], !override.isEmpty {
             roots.append(URL(fileURLWithPath: (override as NSString).expandingTildeInPath))
+        }
+
+        // share/ next to the running binary. Before symlink resolution the
+        // invocation path finds the install prefix's share (brew:
+        // /opt/homebrew/bin → /opt/homebrew/share; direct installer:
+        // ~/.local/bin → ~/.local/share); after resolution it finds a keg's
+        // own share (brew: …/Cellar/metaphor/<ver>/share). A bare argv0
+        // without "/" carries no location, so it is skipped.
+        var executables: [URL] = []
+        if let argv0, argv0.contains("/") {
+            executables.append(URL(fileURLWithPath: argv0, relativeTo: currentDirectory).standardizedFileURL)
+        }
+        if let resolved = executableURL?.resolvingSymlinksInPath() {
+            executables.append(resolved)
+        }
+        for executable in executables {
+            roots.append(
+                executable
+                    .deletingLastPathComponent() // bin/
+                    .deletingLastPathComponent() // install prefix
+                    .appendingPathComponent("share/metaphor/templates")
+            )
         }
 
         // Prefer checkout templates when running from source so template edits are immediately testable.
@@ -92,12 +141,14 @@ public struct TemplateCatalog {
             .deletingLastPathComponent()
         roots.append(sourceRoot.appendingPathComponent("Templates"))
 
-        let home = FileManager.default.homeDirectoryForCurrentUser
+        // Legacy fixed locations, for layouts the binary-adjacent probe cannot see.
         roots.append(home.appendingPathComponent(".local/share/metaphor/templates"))
         roots.append(URL(fileURLWithPath: "/usr/local/share/metaphor/templates"))
         roots.append(URL(fileURLWithPath: "/opt/homebrew/share/metaphor/templates"))
 
-        return roots
+        // Keep the first occurrence only, so the "Searched:" error stays readable.
+        var seen = Set<String>()
+        return roots.filter { seen.insert($0.standardizedFileURL.path).inserted }
     }
 }
 
