@@ -15,6 +15,12 @@ enum MetaphorCLIEntryPoint {
             return
         }
 
+        // アップデート通知は watch（ビューア経路）も含む全コマンドが通るここで
+        // 起動する。CommandLineTool 内だと既定の watch が素通りしてしまう。
+        if UpdateNotifier.shouldRun(forCommand: arguments.first) {
+            UpdateNotifier().begin(console: StandardConsole())
+        }
+
         // `metaphor watch`: 既定で常設ライブビューア窓 + 子だけ差し替え（Syphon/AppKit を
         // 要するためここ＝実行ファイル側で処理する）。`--no-viewer` でのみ従来の
         // 「スケッチ自身の窓を再起動する」モード（CommandLineTool 側）に渡す。
