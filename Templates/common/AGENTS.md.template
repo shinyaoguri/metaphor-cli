@@ -97,9 +97,8 @@ under `custom`:
 
 This example is intentionally minimal; snapshots may carry more fields (color
 `stats`, measured `performance`, `customTypes`, …). The canonical schema is
-`contract/frame.schema.json` in the metaphor repositories — once dependencies
-are resolved you can read it locally at
-`{{METAPHOR_AI_DOCS_PATH}}/contract/frame.schema.json`.
+[`contract/frame.schema.json`](https://github.com/shinyaoguri/metaphor/blob/main/contract/frame.schema.json)
+in the metaphor repositories.
 
 Probe is enabled automatically under `metaphor watch` and `metaphor mcp`.
 
