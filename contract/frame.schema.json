@@ -99,6 +99,48 @@
           "type": "integer"
         }
       }
+    },
+    "performance": {
+      "description": "リクエスト処理時に採取する実測パフォーマンス統計。スケッチの「重さ」を AI が画像からの推測でなく数値で判断するためのシグナル。単一フレーム経路 (current/frame.json) のみで搭載され、連続キャプチャ (sequence/frame.NNNN.json)・失敗応答・採取不能時 (レンダラー未接続等) はキー省略。schemaVersion 4 のまま additive 追加 (Issue #271)。",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targetFPS", "thermalState"],
+      "properties": {
+        "fps": {
+          "description": "直近約 1 秒の実測フレームレート。ウィンドウ内のフレームが 2 個未満 (noLoop 停止中・起動直後) はキー省略。",
+          "type": "number",
+          "minimum": 0
+        },
+        "targetFPS": {
+          "description": "実効ターゲット FPS (frameRate() / METAPHOR_FPS 解決後の設定値)。",
+          "type": "integer",
+          "minimum": 1
+        },
+        "frameTimeMs": {
+          "description": "直近約 1 秒のフレーム時間 (ミリ秒)。max はスパイク検出用。fps と同じ条件でキー省略。",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mean", "max"],
+          "properties": {
+            "mean": { "type": "number", "minimum": 0 },
+            "max": { "type": "number", "minimum": 0 }
+          }
+        },
+        "memoryMB": {
+          "description": "自プロセスの phys_footprint (MB)。Activity Monitor の「メモリ」相当の実効フットプリント。取得失敗時はキー省略。",
+          "type": "number",
+          "minimum": 0
+        },
+        "cpuPercent": {
+          "description": "前回 Probe リクエストから今回まで (初回はスケッチ起動から) の平均 CPU 使用率 (%)。1 コア = 100% (top 互換。マルチコア使用で 100 超あり)。取得失敗時はキー省略。",
+          "type": "number",
+          "minimum": 0
+        },
+        "thermalState": {
+          "description": "ProcessInfo.thermalState の文字列表現。unknown は将来の未知ケース用。",
+          "enum": ["nominal", "fair", "serious", "critical", "unknown"]
+        }
+      }
     }
   }
 }

@@ -55,7 +55,7 @@
 
 - **現行 = `schemaVersion: 4`**。トップレベルキー: `schemaVersion` / `id` / `label?` /
   `sourceStamp?` / `frame` / `time` / `size{width,height}` / `custom{}` / `customTypes{}` /
-  `warnings[]` / `stats?`。
+  `warnings[]` / `stats?` / `performance?`。
 - `stats`（v2 で追加）= `meanColor[3]` / `meanLuminance` / `contentFraction` /
   `contentBounds?{x,y,width,height}`（正規化・原点左上、blank 時省略） / `sampleGrid`。
 - `customTypes`（v3 で追加）= `custom` の各キー → 型タグ（`double` / `int` / `string` /
@@ -67,6 +67,16 @@
   集約ハッシュ、または build id）。AI／測定ハーネスが「観測フレームがどのソース版を
   反映するか」を判定し、保存→反映（リビルド→再起動）の完了を機械検出するために使う。
   未注入時は省略（nil）。
+- `performance`（`schemaVersion: 4` のまま additive 追加、Issue #271）= リクエスト
+  処理時に採取する実測パフォーマンス統計。スケッチの「重い/軽い」を AI が画像からの
+  推測でなく数値で判断するためのシグナル。`fps?`（直近約 1 秒の実測値。noLoop 停止中・
+  起動直後は省略）/ `targetFPS`（`frameRate()` / `METAPHOR_FPS` 解決後の設定値）/
+  `frameTimeMs?{mean,max}`（ミリ秒。`max` はスパイク検出用）/ `memoryMB?`
+  （phys_footprint、Activity Monitor の「メモリ」相当）/ `cpuPercent?`（前回リクエスト
+  から今回まで＝初回はスケッチ起動からの平均。**1 コア = 100%**、`top` 互換）/
+  `thermalState`（`nominal` / `fair` / `serious` / `critical` / `unknown`）。
+  **単一フレーム経路（`current/frame.json`）のみ**で搭載され、連続キャプチャ
+  （`sequence/frame.NNNN.json`）・失敗応答・採取不能時はキー省略。
 - **consumer 規約**: 未知のキーは無視する。`metaphor-cli` の MCP サーバは
   `frame.json` を **verbatim 透過**するため、additive なフィールド追加では cli の
   コード変更は不要（将来 cli が個別フィールドを解釈し始めたら本表に追記する）。

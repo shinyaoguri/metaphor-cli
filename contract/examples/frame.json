@@ -35,5 +35,16 @@
       "height" : 0.6
     },
     "sampleGrid" : 32
+  },
+  "performance" : {
+    "fps" : 59.8,
+    "targetFPS" : 60,
+    "frameTimeMs" : {
+      "mean" : 16.7,
+      "max" : 22.1
+    },
+    "memoryMB" : 412.3,
+    "cpuPercent" : 87.5,
+    "thermalState" : "nominal"
   }
 }
