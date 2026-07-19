@@ -43,6 +43,8 @@ GitHub Release からピン留め取得、checksum 検証あり）。
   （非ブロッキング起動・stdin パイプ）、`FileWatching.swift`（ポーリング監視）。
 - MCP: `MCP/MCPServer.swift`（stdio JSON-RPC ループ）、`MCP/MCPProtocol.swift`
   （`MCPToolHandling` / `MCPToolDefinition`）、`MCP/SketchToolHandler.swift`（4 ツール実装）。
+- metrics（`run`/`watch` の `--metrics`）: `Metrics/MetricsPoller.swift`（Probe ポーリング
+  と MCP との競合調停）、`Metrics/MetricsReporter.swift`（整形とステータスライン表示）。
 
 ## Adding a New Command
 

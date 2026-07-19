@@ -15,7 +15,7 @@ public struct RunCommand {
         if arguments.contains("--help") || arguments.contains("-h") {
             console.write("""
             Usage:
-              metaphor run [--syphon[=name]] [--fps <n>] [swift-run-arguments...]
+              metaphor run [--syphon[=name]] [--fps <n>] [--metrics] [swift-run-arguments...]
 
             Runs `swift run` in the current directory and forwards extra arguments.
 
@@ -26,6 +26,12 @@ public struct RunCommand {
                                 name. Sets METAPHOR_SYPHON_NAME for the child.
               --fps <n>         Override the sketch's render FPS (sets METAPHOR_FPS
                                 for the child). Defaults to the sketch's config.fps.
+              --metrics         Show live fps / frame time / memory / CPU / thermal
+                                stats on the terminal (sets METAPHOR_PROBE=1 for the
+                                child and polls the Probe files once per second).
+              --metrics-interval <sec>
+                                Polling interval for --metrics (default 1, min 0.2).
+                                Implies --metrics.
             """)
             return
         }
@@ -41,8 +47,11 @@ public struct RunCommand {
         var forwarded: [String] = []
         var syphonName: String?
         var fps: Int?
+        var metricsEnabled = false
+        var metricsInterval: Double?
         let syphonPrefix = "--syphon="
         let fpsPrefix = "--fps="
+        let metricsIntervalPrefix = "--metrics-interval="
         var i = 0
         while i < arguments.count {
             let arg = arguments[i]
@@ -59,6 +68,15 @@ public struct RunCommand {
                 }
             } else if arg.hasPrefix(fpsPrefix) {
                 fps = Int(arg.dropFirst(fpsPrefix.count))
+            } else if arg == "--metrics" {
+                metricsEnabled = true
+            } else if arg == "--metrics-interval" {
+                if i + 1 < arguments.count {
+                    metricsInterval = Double(arguments[i + 1])
+                    i += 1
+                }
+            } else if arg.hasPrefix(metricsIntervalPrefix) {
+                metricsInterval = Double(arg.dropFirst(metricsIntervalPrefix.count))
             } else {
                 forwarded.append(arg)
             }
@@ -66,6 +84,9 @@ public struct RunCommand {
         }
         // 0 以下の FPS は無効として無視。
         if let value = fps, value <= 0 { fps = nil }
+        // 0 以下・非数値の interval は無効として無視。interval 指定は --metrics を含意。
+        if let value = metricsInterval, value <= 0 { metricsInterval = nil }
+        metricsEnabled = metricsEnabled || metricsInterval != nil
 
         var envAssignments: [String] = []
         if let syphonName {
@@ -75,6 +96,19 @@ public struct RunCommand {
         if let fps {
             envAssignments.append("METAPHOR_FPS=\(fps)")
         }
+        if metricsEnabled {
+            // Probe を有効化してメトリクスの供給元（frame.json の performance）を作る。
+            envAssignments.append("METAPHOR_PROBE=1")
+        }
+
+        // swift run（ビルド含む）が同期ブロックする間、ポーラーは GCD タイマーで
+        // 並走する。ビルド中・起動前は「応答待ち」表示になるだけで害はない。
+        var reporter: MetricsReporter?
+        if metricsEnabled {
+            reporter = MetricsReporter(sketchDirectory: currentDirectory, interval: metricsInterval)
+            reporter?.start()
+        }
+        defer { reporter?.stop() }
 
         let result = try processRunner.run(
             executable: "/usr/bin/env",

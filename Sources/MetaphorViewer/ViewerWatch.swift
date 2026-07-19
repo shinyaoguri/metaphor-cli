@@ -15,6 +15,8 @@ public func runViewerWatch(
     syphonName requestedSyphonName: String? = nil,
     probeEnabled: Bool = true,
     fps: Int? = nil,
+    metricsEnabled: Bool = false,
+    metricsInterval: Double? = nil,
     console: any Console
 ) throws {
     let package = directory.appendingPathComponent("Package.swift")
@@ -42,7 +44,9 @@ public func runViewerWatch(
         "METAPHOR_VIEWER": "1",
         "METAPHOR_SYPHON_NAME": syphonName,
     ]
-    if probeEnabled {
+    if probeEnabled || metricsEnabled {
+        // --metrics はメトリクスの供給元として Probe を必要とする。--no-probe
+        // 併用時も注入するが、shareSession（MCP アタッチ可否）は probeEnabled に従う。
         childEnvironment["METAPHOR_PROBE"] = "1"
     }
     // `--fps <n>` 指定時はレンダー FPS を子へ渡す（CONTRACT.md 契約点 2）。
@@ -61,6 +65,13 @@ public func runViewerWatch(
         shareSession: probeEnabled
     )
 
+    // --metrics: 初回ビルド・起動が終わるまでは「応答待ち」表示になるだけなので、
+    // アプリ起動前に開始してよい。
+    let reporter: MetricsReporter? = metricsEnabled
+        ? MetricsReporter(sketchDirectory: directory, interval: metricsInterval)
+        : nil
+    reporter?.start()
+
     // ウィンドウ/MTKView は applicationDidFinishLaunching の中で作る（CLI ツールから
     // GUI を使う場合の正準パターン。アプリ起動前に窓を作ると WindowServer が Metal
     // レイヤーを合成せず中身が黒くなることがある）。
@@ -70,11 +81,12 @@ public func runViewerWatch(
         syphonName: syphonName,
         title: "metaphor watch — \(directory.lastPathComponent)",
         session: session,
-        console: console
+        console: console,
+        reporter: reporter
     )
     app.delegate = delegate
 
-    installViewerSignalHandlers(session: session, console: console)
+    installViewerSignalHandlers(session: session, reporter: reporter, console: console)
     app.run()
 }
 
@@ -84,13 +96,21 @@ private final class ViewerWatchDelegate: NSObject, NSApplicationDelegate {
     private let title: String
     private let session: WatchSession
     private let console: any Console
+    private let reporter: MetricsReporter?
     private var viewer: ViewerWindow?
 
-    init(syphonName: String, title: String, session: WatchSession, console: any Console) {
+    init(
+        syphonName: String,
+        title: String,
+        session: WatchSession,
+        console: any Console,
+        reporter: MetricsReporter?
+    ) {
         self.syphonName = syphonName
         self.title = title
         self.session = session
         self.console = console
+        self.reporter = reporter
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -146,6 +166,7 @@ private final class ViewerWatchDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        reporter?.stop()
         session.stop()
     }
 
@@ -161,11 +182,17 @@ private final class ViewerWatchDelegate: NSObject, NSApplicationDelegate {
 }
 
 /// SIGINT/SIGTERM で子スケッチを止めてからプロセス終了する。
-private func installViewerSignalHandlers(session: WatchSession, console: any Console) {
+private func installViewerSignalHandlers(
+    session: WatchSession,
+    reporter: MetricsReporter?,
+    console: any Console
+) {
     let install: (Int32) -> Void = { sig in
         signal(sig, SIG_IGN)
         let source = DispatchSource.makeSignalSource(signal: sig, queue: .global())
         source.setEventHandler {
+            // 先にステータスライン行を確定させ、停止ログと混ざらないようにする。
+            reporter?.stop()
             console.write("\n[watch] 停止します…")
             session.stop()
             Foundation.exit(0)

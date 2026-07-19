@@ -238,6 +238,50 @@ final class WatchSessionTests: XCTestCase {
         )
     }
 
+    func testParseWatchArgumentsExtractsMetrics() {
+        // 既定は無効。
+        XCTAssertFalse(parseWatchArguments([]).metricsEnabled)
+        // --metrics で有効化し、swift 引数からは除去される。
+        XCTAssertEqual(
+            parseWatchArguments(["--metrics", "-c", "release"]),
+            ParsedWatchArguments(syphonName: nil, metricsEnabled: true, swiftArguments: ["-c", "release"])
+        )
+        // 間隔指定（空白区切り / = 区切り）は --metrics を含意する。
+        XCTAssertEqual(
+            parseWatchArguments(["--metrics-interval", "0.5"]),
+            ParsedWatchArguments(
+                syphonName: nil, metricsEnabled: true, metricsInterval: 0.5, swiftArguments: []
+            )
+        )
+        XCTAssertEqual(
+            parseWatchArguments(["--metrics", "--metrics-interval=2"]),
+            ParsedWatchArguments(
+                syphonName: nil, metricsEnabled: true, metricsInterval: 2, swiftArguments: []
+            )
+        )
+        // 非数値・0 以下・末尾の値なしは間隔として無効（nil）
+        XCTAssertEqual(
+            parseWatchArguments(["--metrics", "--metrics-interval", "abc"]),
+            ParsedWatchArguments(syphonName: nil, metricsEnabled: true, swiftArguments: [])
+        )
+        XCTAssertEqual(
+            parseWatchArguments(["--metrics-interval", "0"]),
+            ParsedWatchArguments(syphonName: nil, metricsEnabled: false, swiftArguments: [])
+        )
+        XCTAssertEqual(
+            parseWatchArguments(["--metrics", "--metrics-interval"]),
+            ParsedWatchArguments(syphonName: nil, metricsEnabled: true, swiftArguments: [])
+        )
+        // --no-probe と併用しても双方が独立にパースされる（Probe 注入の強制は
+        // WatchCommand / runViewerWatch 側の責務）。
+        XCTAssertEqual(
+            parseWatchArguments(["--no-probe", "--metrics"]),
+            ParsedWatchArguments(
+                syphonName: nil, probeEnabled: false, metricsEnabled: true, swiftArguments: []
+            )
+        )
+    }
+
     func testForwardInputGoesToCurrentChild() throws {
         let runner = RecordingProcessRunner()
         let launcher = RecordingLauncher()

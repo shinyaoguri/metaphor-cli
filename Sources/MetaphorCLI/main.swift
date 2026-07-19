@@ -56,6 +56,8 @@ enum MetaphorCLIEntryPoint {
                 syphonName: parsed.syphonName,
                 probeEnabled: parsed.probeEnabled,
                 fps: parsed.fps,
+                metricsEnabled: parsed.metricsEnabled,
+                metricsInterval: parsed.metricsInterval,
                 console: StandardConsole()
             )
         } catch let error as CLIError {

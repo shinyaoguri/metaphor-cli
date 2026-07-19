@@ -324,6 +324,49 @@ final class MetaphorCLITests: XCTestCase {
         XCTAssertEqual(runner.invocations.first?.arguments, ["swift", "run", "--", "foo"])
     }
 
+    func testRunMetricsInjectsProbeEnvAndStripsFlags() throws {
+        let runner = RecordingProcessRunner()
+        let cmd = RunCommand(
+            console: BufferedConsole(),
+            processRunner: runner,
+            currentDirectory: temporaryDirectory()
+        )
+
+        try cmd.run(arguments: ["--metrics", "--metrics-interval", "0.5", "-c", "release"])
+
+        // METAPHOR_PROBE=1 が注入され、--metrics 系フラグは swift run へ渡らない。
+        XCTAssertEqual(
+            runner.invocations.first?.arguments,
+            ["METAPHOR_PROBE=1", "swift", "run", "-c", "release"]
+        )
+    }
+
+    func testRunMetricsIntervalAloneImpliesMetrics() throws {
+        let runner = RecordingProcessRunner()
+        let cmd = RunCommand(
+            console: BufferedConsole(),
+            processRunner: runner,
+            currentDirectory: temporaryDirectory()
+        )
+
+        try cmd.run(arguments: ["--metrics-interval=2"])
+
+        XCTAssertEqual(runner.invocations.first?.arguments, ["METAPHOR_PROBE=1", "swift", "run"])
+    }
+
+    func testRunWithoutMetricsDoesNotInjectProbeEnv() throws {
+        let runner = RecordingProcessRunner()
+        let cmd = RunCommand(
+            console: BufferedConsole(),
+            processRunner: runner,
+            currentDirectory: temporaryDirectory()
+        )
+
+        try cmd.run(arguments: ["-c", "release"])
+
+        XCTAssertEqual(runner.invocations.first?.arguments, ["swift", "run", "-c", "release"])
+    }
+
     func testSyphonStableNameUsesDirectoryBasename() {
         XCTAssertEqual(SyphonName.stable(for: URL(fileURLWithPath: "/Users/x/Sketches/WaveField")), "WaveField")
         XCTAssertEqual(SyphonName.stable(for: URL(fileURLWithPath: "/")), "metaphor")
