@@ -24,6 +24,14 @@ on:
 permissions:
   contents: write
 
+# Serialize releases: back-to-back merges each dispatch a release, and two
+# parallel runs would compute the same next tag from the same latest tag.
+# Queued duplicates collapse (only the newest pending run survives), and the
+# surviving run builds main HEAD, so intermediate changes still ship.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: macos-26

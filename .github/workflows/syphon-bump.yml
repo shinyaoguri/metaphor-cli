@@ -84,6 +84,9 @@ jobs:
           base: main
           title: "chore: bump Syphon.xcframework pin to ${{ steps.resolve.outputs.tag }}"
           commit-message: "chore: bump Syphon.xcframework pin to ${{ steps.resolve.outputs.tag }}"
+          # A new pin only reaches users through a release, so ship it on merge
+          # (a chore: title alone would not trigger release-on-merge.yml).
+          labels: release:patch
           body: |
             Automated by `syphon-bump.yml` to track metaphor release
             **${{ steps.resolve.outputs.tag }}** (see CONTRACT.md, L2a).
