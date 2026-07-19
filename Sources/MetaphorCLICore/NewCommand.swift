@@ -68,17 +68,32 @@ public struct NewCommand {
         // api_reference / AGENTS.md 用の AI ドキュメントの在り処。ローカル checkout は
         // その絶対パス、リモート版は初回ビルド後に現れる SwiftPM checkout 先。
         let aiDocsPath: String
+        // 完了メッセージ用。どの metaphor をどう決めたかをユーザーに透明にする (#58)。
+        let dependencySummary: String
         if let localPath = options.value("metaphor-path") {
             let url = PathResolver.url(from: localPath, relativeTo: currentDirectory)
             metaphorDependency = ".package(path: \"\(url.path.swiftLiteralEscaped)\")"
             packageIdentity = options.value("metaphor-package") ?? "metaphor"
             aiDocsPath = url.path
+            dependencySummary = "local checkout at \(url.path)"
         } else {
             let url = options.value("metaphor-url") ?? "https://github.com/shinyaoguri/metaphor.git"
-            let version = options.value("metaphor-version") ?? latestMetaphorVersion() ?? BuildInfo.defaultMetaphorVersion
+            let version: String
+            let versionSource: String
+            if let explicit = options.value("metaphor-version") {
+                version = explicit
+                versionSource = "--metaphor-version"
+            } else if let latest = latestMetaphorVersion() {
+                version = latest
+                versionSource = "latest GitHub release"
+            } else {
+                version = BuildInfo.defaultMetaphorVersion
+                versionSource = "built-in default"
+            }
             metaphorDependency = ".package(url: \"\(url.swiftLiteralEscaped)\", from: \"\(version.swiftLiteralEscaped)\")"
             packageIdentity = options.value("metaphor-package") ?? "metaphor"
             aiDocsPath = ".build/checkouts/metaphor"
+            dependencySummary = "from: \(version) (\(versionSource); allows newer up to the next major)"
         }
 
         let context = TemplateContext(
@@ -122,6 +137,7 @@ public struct NewCommand {
         // Surface which catalog produced the files, so a stale install's
         // templates shadowing the expected ones is diagnosable at a glance (#69).
         console.write("Templates: \(catalog.root.path)")
+        console.write("metaphor: \(dependencySummary)")
 
         // Resolve dependencies now so the metaphor package is checked out
         // immediately. For a remote (url) dependency this is what creates
