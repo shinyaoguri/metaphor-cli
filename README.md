@@ -276,13 +276,13 @@ Example:
 
 ### 公開ツール
 
-| ツール | 役割 |
-|---|---|
-| `snapshot` | 現在フレームの画像（PNG）と内部状態（`frameCount` / `time` / `probe()` 値 / 色・領域統計 / 実測パフォーマンス / 警告）を返す |
-| `capture_sequence` | 連続フレーム列を採取し、コンタクトシート画像とフレーム別 manifest を返す（動き・リズム・遷移を観測する） |
-| `input` | 実行中のスケッチへマウス・キー入力を送る（単独モードのみ） |
-| `build_status` | 直近の `swift build` の成否とエラーを返す |
-| `api_reference` | 依存先 metaphor の API ドキュメント（作法ガイド / 全 API / サンプル索引）を返す |
+| ツール | 役割 | AI に頼める例 |
+|---|---|---|
+| `snapshot` | 現在フレームの画像（PNG）と内部状態（`frame` / `time` / `probe()` 値 / 色・領域統計 / 実測パフォーマンス / 警告）を返す | 「いま見えている絵を確認して」 |
+| `capture_sequence` | 連続フレーム列を採取し、コンタクトシート画像とフレーム別 manifest を返す（動き・リズム・遷移を観測する） | 「回転が滑らかか 2 秒ぶん観測して」 |
+| `input` | 実行中のスケッチへマウス・キー入力を送る（単独モードのみ） | 「マウスを中央へ動かして反応を見て」 |
+| `build_status` | 直近の `swift build` の成否とエラーを返す | 「いまの編集がビルドできたか確認して」 |
+| `api_reference` | 依存先 metaphor の API ドキュメント（作法ガイド / 全 API / サンプル索引）を返す | 「circle の API を調べてから直して」 |
 
 スケッチの性能診断（重い/軽い・どれくらい重いか）は、`snapshot` が返す `performance`
 （実測 `fps` / `targetFPS` / `frameTimeMs` / `memoryMB` / `cpuPercent` / `thermalState`）で
@@ -343,15 +343,19 @@ Example:
 
 ### 人間と AI で同じスケッチを共有する（共有セッション）
 
-VSCode でコードを編集しながら、同じ実行中スケッチを AI にも観測させたい場合は、ターミナルで `metaphor watch` を起動しておきます。
+VSCode でコードを編集しながら、同じ実行中スケッチを AI にも観測させる形です。前提: スケッチ作成と MCP 登録（[セットアップ](#セットアップ)の 1〜2）が済んでいること。**起動の順序が最重要です — 必ず `metaphor watch` が先、AI クライアントが後**。
 
-```bash
-metaphor watch        # ライブビューア窓を開き、共有セッションを公開する
-```
+1. **先に**、ターミナルで共有セッションを起動します。
 
-この状態で AI クライアント（MCP 登録済み）から依頼すると、`metaphor mcp` は**新しくスケッチを起動せず、動作中の `watch` セッションにアタッチ**して観測します。編集は人間（VSCode）も AI（ファイルを直接編集）もディスクに書くだけで、`watch` が再ビルドして両者へ反映されます。
+   ```bash
+   metaphor watch        # ライブビューア窓を開き、共有セッションを公開する
+   ```
 
-> **起動の順序に注意。** `metaphor mcp` が「動作中の `watch` にアタッチするか／自前で別インスタンスを起動するか」を決めるのは、**起動した瞬間に 1 度だけ**です（`.metaphor/session.json` の生存 pid を確認する）。`metaphor mcp` を起動するのは Claude Code なので、**先に `metaphor watch` を立ててから Claude Code を開いてください**。
+2. **次に**、同じディレクトリで AI クライアント（Claude Code など）を開きます。クライアントが裏で起動する `metaphor mcp` は、**新しくスケッチを起動せず、動作中の `watch` セッションにアタッチ**して観測します。
+
+3. AI に依頼します（`snapshot` / `capture_sequence` / `build_status` / `api_reference`）。編集は人間（VSCode）も AI（ファイルを直接編集）もディスクに書くだけで、`watch` が再ビルドして両者へ反映されます。
+
+> **なぜ順序が重要か。** `metaphor mcp` が「動作中の `watch` にアタッチするか／自前で別インスタンスを起動するか」を決めるのは、**起動した瞬間に 1 度だけ**です（`.metaphor/session.json` の生存 pid を確認する）。
 >
 > 逆順（Claude Code を先に開き `metaphor mcp` が起動済み）だと、mcp は `watch` を見つけられず**自前の別インスタンス**（ヘッドレス）を観測し、あなたのビューア窓とは別物になります。後から再チェックはしません。直すには Claude Code 側で MCP を再接続（`/mcp`）するか開き直すと、`metaphor mcp` が再起動して `watch` にアタッチし直します。
 
@@ -386,7 +390,7 @@ AI エージェントで作業する場合の起点は [AGENTS.md](AGENTS.md)、
 
 - **`metaphor watch` のビューア窓が黒いまま** — 子スケッチの初回ビルド中か、ビルド失敗の可能性。ターミナルの `[watch]` ログを確認してください。ビルド失敗時は直前のスケッチを維持し、`[watch] ビルド失敗 …` を表示します。
 - **`metaphor watch` が遅い／毎回フルビルドになる** — バイナリ解決に失敗すると `swift run` にフォールバックします。`[watch] バイナリ解決に失敗 …` が出る場合は、パッケージに executable プロダクトがあるか、`swift build --show-bin-path` が通るか確認。
-- **AI（MCP）から観測できない** — `metaphor watch`（共有セッション）が起動しているか、`metaphor watch --no-probe` で無効化していないかを確認。`metaphor mcp` は同じディレクトリで実行します。詳細は [AI と協調する](#ai-と協調する) を参照。
+- **AI（MCP）から観測できない** — `metaphor watch`（共有セッション）が起動しているか、**先に `watch` → 後から AI クライアント**の順序で起動したか、`metaphor watch --no-probe` で無効化していないかを確認。順序が逆だと MCP は別インスタンスを観測します（直し方は [共有セッション](#人間と-ai-で同じスケッチを共有する共有セッション) を参照）。`metaphor mcp` は同じディレクトリで実行します。
 - **`metaphor` がローカル開発版か brew 版か分からない** — `command -v metaphor` で実体パスを確認。direnv の設定は [DEVELOPMENT.md](DEVELOPMENT.md) を参照。
 - **`metaphor update` が固まる** — GitHub への通信待ち（最大 60 秒でタイムアウト）。ネットワーク到達性を確認してください。Homebrew 導入版は `brew upgrade` を案内します。
 
