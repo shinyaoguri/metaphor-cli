@@ -51,18 +51,28 @@ CI は `scripts/check-contract.sh` で契約トークンの消失を検知する
 - **`main`** — 唯一の長命ブランチ（デフォルト）。すべての PR は main 宛。保護: PR必須・`build-and-test` 必須・**直push禁止**・squashのみ。
 - feature ブランチは main から切り、マージ後自動削除。
 
-### リリース手順（ラベル方式）
+### リリース手順（マージで自動）
+
+リリースは PR の squash マージだけで自動的に走る。`release-on-merge.yml` が
+bump を判定して既存の **Release** workflow を起動（tarball/Formula 生成 →
+`shinyaoguri/homebrew-tap` へ Formula push）。判定の優先順位:
+
+1. `release:skip` ラベル → リリースしない
+2. `release:major` / `release:minor` / `release:patch` ラベル → 明示上書き
+3. ラベル無し → **Conventional Commits の PR タイトル**（= squash コミット）から自動判定:
+   `feat:` → minor / `fix:` `perf:` → patch / それ以外（docs/chore/refactor/test/ci）→ リリースなし（次の feat/fix リリースに同乗）
+
 ```bash
-# 通常の作業
-gh pr create --base main --title "..."
-# リリースするとき: PR に release ラベルを付けてマージ
-gh pr create --base main --title "..." --label release:minor
-gh pr merge --squash   # マージで release-on-merge.yml が release.yml を dispatch
+gh pr create --base main --title "feat(...): ..."   # → マージで自動 minor リリース
+gh pr create --base main --title "docs: ..."        # → マージしてもリリースなし
+gh pr create --base main --title "feat: ..." --label release:skip   # 自動リリースを抑止
 ```
-`release-on-merge.yml` がラベルから bump を判定し、既存の **Release** workflow を起動
-（tarball/Formula 生成 → `shinyaoguri/homebrew-tap` へ Formula push）。`release:*`
-ラベル無しの PR は通常マージでリリースしない。prerelease は Release workflow の
-`workflow_dispatch` で手動。Syphon pin は週次ポーリングが古ければ自動 bump PR を出す。
+
+**major は自動判定しない**（`!` 付きタイトルでも type どおりの bump）。major /
+v1.0 到達は必ず `release:major` ラベルで明示する。prerelease は Release workflow の
+`workflow_dispatch` で手動。連続マージ時は release.yml の concurrency が直列化し、
+待機中の重複リリースは最新 1 本にまとまる。Syphon pin の自動 bump PR は
+`release:patch` ラベル付きで作られ、マージで pin がユーザーへ届く。
 
 ## 気付きは Issue へ
 

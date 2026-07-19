@@ -1,10 +1,20 @@
 name: Release on merge
 
-# When a PR is merged to main with a release:* label, dispatch the existing
-# Release workflow with the bump derived from the label. This keeps release.yml
-# (build, version pin, tag, GitHub Release, Homebrew tap push) as the single
-# source of release logic — we only change *who* triggers it. PRs without a
-# release:* label merge normally and do not release.
+# When a PR is merged to main, dispatch the existing Release workflow with an
+# automatically determined bump. release.yml (build, version pin, tag, GitHub
+# Release, Homebrew tap push) stays the single source of release logic — this
+# workflow only decides *whether* and *how much* to bump.
+#
+# Bump resolution, in priority order:
+#   1. `release:skip` label            -> never release
+#   2. `release:major|minor|patch`     -> explicit override
+#   3. Conventional Commits PR title   -> feat: minor / fix, perf: patch /
+#      (= squash commit message)          anything else: no release
+#
+# `major` is never inferred automatically (a breaking `!` marker still maps to
+# the type's normal bump) — going 1.0 or bumping major is always an explicit
+# `release:major` label. Docs/chore/refactor merges ship with the next feat/fix
+# release instead of cutting one of their own.
 on:
   pull_request:
     types: [closed]
@@ -16,29 +26,39 @@ permissions:
 
 jobs:
   dispatch-release:
-    if: >
-      github.event.pull_request.merged == true &&
-      (contains(github.event.pull_request.labels.*.name, 'release:patch') ||
-       contains(github.event.pull_request.labels.*.name, 'release:minor') ||
-       contains(github.event.pull_request.labels.*.name, 'release:major'))
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
-      - name: Determine bump from label
+      - name: Determine bump (label override, else Conventional Commits title)
         id: bump
         env:
           LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
+          TITLE: ${{ github.event.pull_request.title }}
         run: |
           set -euo pipefail
-          if echo "$LABELS" | grep -q 'release:major'; then
+          BUMP=""
+          if echo "$LABELS" | grep -q 'release:skip'; then
+            echo "release:skip label present; not releasing."
+          elif echo "$LABELS" | grep -q 'release:major'; then
             BUMP=major
           elif echo "$LABELS" | grep -q 'release:minor'; then
             BUMP=minor
-          else
+          elif echo "$LABELS" | grep -q 'release:patch'; then
             BUMP=patch
+          else
+            # Squash-only repo: the PR title is the commit message on main.
+            TYPE=$(printf '%s' "$TITLE" | sed -nE 's/^([a-z]+)(\([^)]*\))?!?:.*/\1/p')
+            case "$TYPE" in
+              feat)     BUMP=minor ;;
+              fix|perf) BUMP=patch ;;
+              *) echo "No release for type '${TYPE:-unparsable}' (title: $TITLE)." ;;
+            esac
           fi
-          echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
-          echo "Selected bump from labels [$LABELS]: $BUMP"
+          echo "bump=${BUMP}" >> "$GITHUB_OUTPUT"
+          echo "Labels: [$LABELS] / Title: [$TITLE] -> bump: ${BUMP:-none}"
+
       - name: Dispatch Release workflow
+        if: steps.bump.outputs.bump != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
