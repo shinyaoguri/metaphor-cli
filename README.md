@@ -198,11 +198,15 @@ Homebrew でインストールした場合、CLI 本体の更新は Homebrew に
 
 | ツール | 役割 |
 |---|---|
-| `snapshot` | 現在フレームの画像（PNG）と内部状態（`frameCount` / `time` / `probe()` 値 / 色・領域統計 / 警告）を返す |
+| `snapshot` | 現在フレームの画像（PNG）と内部状態（`frameCount` / `time` / `probe()` 値 / 色・領域統計 / 実測パフォーマンス / 警告）を返す |
 | `capture_sequence` | 連続フレーム列を採取し、コンタクトシート画像とフレーム別 manifest を返す（動き・リズム・遷移を観測する） |
 | `input` | 実行中のスケッチへマウス・キー入力を送る（単独モードのみ） |
 | `build_status` | 直近の `swift build` の成否とエラーを返す |
 | `api_reference` | 依存先 metaphor の API ドキュメント（作法ガイド / 全 API / サンプル索引）を返す |
+
+スケッチの性能診断（重い/軽い・どれくらい重いか）は、`snapshot` が返す `performance`
+（実測 `fps` / `targetFPS` / `frameTimeMs` / `memoryMB` / `cpuPercent` / `thermalState`）で
+画像に頼らず判定できます。フィールド定義は [CONTRACT.md](CONTRACT.md) を参照。
 
 ### セットアップ
 

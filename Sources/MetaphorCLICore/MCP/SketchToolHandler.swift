@@ -54,7 +54,10 @@ public final class SketchToolHandler: MCPToolHandling {
             MCPToolDefinition(
                 name: "snapshot",
                 description: "動作中のスケッチの現在フレームを 1 枚撮り、PNG 画像と内部状態"
-                    + "(frame.json: frameCount / time / probe() 値 / blank 警告)を返す。",
+                    + "(frame.json: frameCount / time / probe() 値 / 色・領域統計 / "
+                    + "performance / blank 警告)を返す。スケッチが重い/軽いの診断は"
+                    + " performance を見る: 実測 fps・targetFPS・frameTimeMs(mean/max)・"
+                    + "memoryMB・cpuPercent(1 コア=100%)・thermalState。",
                 inputSchema: [
                     "type": "object",
                     "properties": [
@@ -74,7 +77,8 @@ public final class SketchToolHandler: MCPToolHandling {
                 description: "動作中のスケッチの連続フレーム列を撮り、時間軸の観測を返す。"
                     + "contact sheet(一覧モンタージュ PNG)と manifest(sequence.json: 各フレームの"
                     + "時刻/サイズ/ファイル名/警告)を返す。アニメーションや時間変化の確認に使う。"
-                    + "1 枚だけなら snapshot を使う。",
+                    + "1 枚だけなら snapshot を使う。性能診断(fps/メモリ/CPU)は snapshot の"
+                    + " performance を使う(sequence の per-frame には載らない)。",
                 inputSchema: [
                     "type": "object",
                     "properties": [
