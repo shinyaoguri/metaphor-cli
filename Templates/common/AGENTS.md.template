@@ -10,7 +10,7 @@ sketch, edit, and re-observe** in a tight loop. Read this file first.
    (a window opens; the sketch rebuilds on every file save).
 2. You (the AI) work through the **`metaphor` MCP server**:
    - `snapshot` — capture the current frame as PNG + internal state
-     (`frame.json`: frameCount / time / `probe()` values / blank warnings).
+     (`frame.json`: frame / time / `probe()` values / blank warnings).
    - `build_status` — did the latest `swift build` succeed? Check this after every edit.
    - `api_reference` — read the metaphor API docs (see below). Use before new APIs.
    - `input` — send mouse/keyboard events to the running sketch (standalone mode only).
@@ -79,6 +79,27 @@ safe to leave in). Use it to make state you care about observable, e.g.:
 probe("particles.count", particles.count)
 probe("mouse", [mouseX, mouseY])
 ```
+
+The `frame.json` that `snapshot` returns looks like this — `probe()` values appear
+under `custom`:
+
+```json
+{
+  "schemaVersion": 4,
+  "id": "01HXYZABCDEF0123456789",
+  "frame": 120,
+  "time": 2.5,
+  "size": { "width": 1280, "height": 720 },
+  "custom": { "particles.count": 500, "mouse": [640, 360] },
+  "warnings": []
+}
+```
+
+This example is intentionally minimal; snapshots may carry more fields (color
+`stats`, measured `performance`, `customTypes`, …). The canonical schema is
+`contract/frame.schema.json` in the metaphor repositories — once dependencies
+are resolved you can read it locally at
+`{{METAPHOR_AI_DOCS_PATH}}/contract/frame.schema.json`.
 
 Probe is enabled automatically under `metaphor watch` and `metaphor mcp`.
 
