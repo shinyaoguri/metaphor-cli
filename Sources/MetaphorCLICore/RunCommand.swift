@@ -26,9 +26,9 @@ public struct RunCommand {
                                 name. Sets METAPHOR_SYPHON_NAME for the child.
               --fps <n>         Override the sketch's render FPS (sets METAPHOR_FPS
                                 for the child). Defaults to the sketch's config.fps.
-              --metrics         Show live fps / frame time / memory / CPU / thermal
-                                stats on the terminal (sets METAPHOR_PROBE=1 for the
-                                child and polls the Probe files once per second).
+              --metrics         Show live fps / memory / CPU / thermal stats on the
+                                terminal (sets METAPHOR_PROBE=1 for the child and
+                                polls the Probe files once per second).
               --metrics-interval <sec>
                                 Polling interval for --metrics (default 1, min 0.2).
                                 Implies --metrics.

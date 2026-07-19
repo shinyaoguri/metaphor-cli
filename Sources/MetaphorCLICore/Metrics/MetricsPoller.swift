@@ -2,24 +2,13 @@ import Foundation
 
 /// `frame.json` の `performance` セクション（CONTRACT.md 契約点 4、schemaVersion 4 に
 /// additive 追加。metaphor 0.7.0+ / Issue metaphor#271）。全フィールドが採取不能時に
-/// 省略されうるため optional でデコードする。未知キーは無視（consumer 規約）。
+/// 省略されうるため optional でデコードする。未知キーは無視（consumer 規約）——
+/// 表示に使わない `frameTimeMs` などはここに持たない（fps で重い/軽いは判断できる）。
 public struct ProbePerformance: Decodable, Equatable {
-    public struct FrameTime: Decodable, Equatable {
-        public let mean: Double
-        public let max: Double
-
-        public init(mean: Double, max: Double) {
-            self.mean = mean
-            self.max = max
-        }
-    }
-
     /// 直近約 1 秒の実測 fps。noLoop 停止中・起動直後は省略。
     public let fps: Double?
     /// `frameRate()` / `METAPHOR_FPS` 解決後の設定値。
     public let targetFPS: Double?
-    /// フレーム時間（ミリ秒）。`max` はスパイク検出用。
-    public let frameTimeMs: FrameTime?
     /// phys_footprint（Activity Monitor の「メモリ」相当）。
     public let memoryMB: Double?
     /// 前回リクエストから今回までの平均 CPU 使用率（1 コア = 100%、`top` 互換）。
@@ -30,14 +19,12 @@ public struct ProbePerformance: Decodable, Equatable {
     public init(
         fps: Double? = nil,
         targetFPS: Double? = nil,
-        frameTimeMs: FrameTime? = nil,
         memoryMB: Double? = nil,
         cpuPercent: Double? = nil,
         thermalState: String? = nil
     ) {
         self.fps = fps
         self.targetFPS = targetFPS
-        self.frameTimeMs = frameTimeMs
         self.memoryMB = memoryMB
         self.cpuPercent = cpuPercent
         self.thermalState = thermalState

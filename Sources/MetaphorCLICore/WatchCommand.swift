@@ -161,8 +161,8 @@ public struct WatchCommand {
               どちらのモードでも有効です。
 
             --metrics:
-              fps・フレーム時間・メモリ・CPU・thermal をターミナル最下行へライブ
-              表示します（Probe の performance を定期ポーリング。MCP 不要）。
+              fps・メモリ・CPU・thermal をターミナル最下行へライブ表示します
+              （Probe の performance を定期ポーリング。MCP 不要）。
               --no-probe と併用した場合も子へ METAPHOR_PROBE=1 は渡します
               （メトリクスの供給元のため。MCP アタッチ用の session.json は書かない）。
 
