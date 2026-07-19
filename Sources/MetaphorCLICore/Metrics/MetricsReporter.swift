@@ -2,8 +2,8 @@ import Foundation
 
 /// `ProbePerformance` をステータスライン 1 行に整形する。
 ///
-/// 表示イメージ（Issue metaphor-cli#82）:
-/// `fps 59.8/60 │ frame 4.2ms (max 9.1) │ mem 141MB │ cpu 23% │ thermal nominal`
+/// 表示イメージ:
+/// `fps 59.8/60 │ mem 141MB │ cpu 23% │ thermal nominal`
 public enum MetricsFormatter {
     public static func line(_ perf: ProbePerformance) -> String {
         var parts: [String] = []
@@ -13,9 +13,6 @@ public enum MetricsFormatter {
         let targetText = perf.targetFPS.map(compactNumber) ?? "--"
         parts.append("fps \(fpsText)/\(targetText)")
 
-        if let frameTime = perf.frameTimeMs {
-            parts.append(String(format: "frame %.1fms (max %.1f)", frameTime.mean, frameTime.max))
-        }
         if let memory = perf.memoryMB {
             parts.append("mem \(Int(memory.rounded()))MB")
         }

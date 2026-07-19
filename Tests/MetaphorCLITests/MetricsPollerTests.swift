@@ -57,6 +57,7 @@ final class MetricsPollerTests: XCTestCase {
     func testPollOnceParsesPerformanceResponse() throws {
         let dir = try makeTempDir()
         // idPrefix と counter は決定論的なので、初回リクエスト id の応答を先置きできる。
+        // frameTimeMs は producer が書くが consumer は使わない（未知キー同様に無視）。
         try writeProbeFile(
             [
                 "id": "metrics-test-1",
@@ -80,7 +81,6 @@ final class MetricsPollerTests: XCTestCase {
         }
         XCTAssertEqual(perf.fps, 59.8)
         XCTAssertEqual(perf.targetFPS, 60)
-        XCTAssertEqual(perf.frameTimeMs, .init(mean: 4.2, max: 9.1))
         XCTAssertEqual(perf.memoryMB, 141.0)
         XCTAssertEqual(perf.cpuPercent, 23.4)
         XCTAssertEqual(perf.thermalState, "nominal")
@@ -193,15 +193,11 @@ final class MetricsFormatterTests: XCTestCase {
         let line = MetricsFormatter.line(ProbePerformance(
             fps: 59.8,
             targetFPS: 60,
-            frameTimeMs: .init(mean: 4.2, max: 9.1),
             memoryMB: 141.2,
             cpuPercent: 23.4,
             thermalState: "nominal"
         ))
-        XCTAssertEqual(
-            line,
-            "fps 59.8/60 │ frame 4.2ms (max 9.1) │ mem 141MB │ cpu 23% │ thermal nominal"
-        )
+        XCTAssertEqual(line, "fps 59.8/60 │ mem 141MB │ cpu 23% │ thermal nominal")
     }
 
     func testMissingFPSFallsBackToDashes() {
