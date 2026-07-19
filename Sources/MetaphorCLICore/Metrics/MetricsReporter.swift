@@ -47,6 +47,7 @@ public final class MetricsStatusLine {
     private let lock = NSLock()
     private var lastLoggedText: String?
     private var didRender = false
+    private var finished = false
 
     /// - Parameters:
     ///   - isTTY: 省略時は stderr の isatty 判定。テスト用フック。
@@ -61,6 +62,9 @@ public final class MetricsStatusLine {
     public func update(_ text: String) {
         lock.lock()
         defer { lock.unlock() }
+        // finish() 後に実行中サイクルの通知が届いても行を復活させない
+        // （停止ログの後ろへ未確定行が紛れ込むのを防ぐ）。
+        if finished { return }
         if isTTY {
             // \u{1B}[2K = erase entire line。改行せずカーソル行を差し替え続ける。
             write("\r\u{1B}[2K\(text)")
@@ -73,10 +77,12 @@ public final class MetricsStatusLine {
         }
     }
 
-    /// 未確定のステータスライン行を改行で確定させる（停止時に呼ぶ）。
+    /// 未確定のステータスライン行を改行で確定させ、以後の `update` を無視する
+    /// （停止時に呼ぶ。冪等）。
     public func finish() {
         lock.lock()
         defer { lock.unlock() }
+        finished = true
         if isTTY, didRender {
             write("\n")
             didRender = false
