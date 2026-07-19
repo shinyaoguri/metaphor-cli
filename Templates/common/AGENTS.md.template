@@ -105,6 +105,10 @@ Probe is enabled automatically under `metaphor watch` and `metaphor mcp`.
 
 ## AI coding guidance
 
+- Language policy: this file and README.md are written in English (AI/tooling-facing),
+  while the code comments in the generated `App.swift` are Japanese (sketch-author-facing).
+  This split is intentional — when editing code, write comments in Japanese to match,
+  unless the user asks for another language.
 - Prefer `import metaphor` and Processing-style sketch APIs before reaching for lower-level modules.
 - Confirm an API with `api_reference` before inventing helpers; copy from `doc=examples`.
 - Keep `setup()` for initialization, loading assets, configuring cameras, and allocating reusable resources.
