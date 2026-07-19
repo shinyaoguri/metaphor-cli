@@ -23,6 +23,9 @@ observe the running sketch (`snapshot`), check builds (`build_status`), and read
 API (`api_reference`). Start with `AGENTS.md`, and keep the creative target in
 `PROJECT_BRIEF.md`.
 
+`.mcp.json` launches the `metaphor` CLI found on your `PATH` — check that
+`which metaphor` resolves (otherwise the MCP connection fails silently).
+
 ## Feedback
 
 Found a bug or something confusing — in the library, the CLI, or the docs? Please

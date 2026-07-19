@@ -391,6 +391,7 @@ AI エージェントで作業する場合の起点は [AGENTS.md](AGENTS.md)、
 - **`metaphor watch` のビューア窓が黒いまま** — 子スケッチの初回ビルド中か、ビルド失敗の可能性。ターミナルの `[watch]` ログを確認してください。ビルド失敗時は直前のスケッチを維持し、`[watch] ビルド失敗 …` を表示します。
 - **`metaphor watch` が遅い／毎回フルビルドになる** — バイナリ解決に失敗すると `swift run` にフォールバックします。`[watch] バイナリ解決に失敗 …` が出る場合は、パッケージに executable プロダクトがあるか、`swift build --show-bin-path` が通るか確認。
 - **AI（MCP）から観測できない** — `metaphor watch`（共有セッション）が起動しているか、**先に `watch` → 後から AI クライアント**の順序で起動したか、`metaphor watch --no-probe` で無効化していないかを確認。順序が逆だと MCP は別インスタンスを観測します（直し方は [共有セッション](#人間と-ai-で同じスケッチを共有する共有セッション) を参照）。`metaphor mcp` は同じディレクトリで実行します。
+- **AI クライアントが MCP サーバに接続できない** — `.mcp.json` / `claude mcp add` の登録は **PATH 上の `metaphor`** を起動します。`which metaphor` で CLI が見つかるか確認してください（brew 未導入の環境や direnv での開発版⇄brew 版切替中は、見つからず黙って失敗することがあります）。
 - **`metaphor` がローカル開発版か brew 版か分からない** — `command -v metaphor` で実体パスを確認。direnv の設定は [DEVELOPMENT.md](DEVELOPMENT.md) を参照。
 - **`metaphor update` が固まる** — GitHub への通信待ち（最大 60 秒でタイムアウト）。ネットワーク到達性を確認してください。Homebrew 導入版は `brew upgrade` を案内します。
 
