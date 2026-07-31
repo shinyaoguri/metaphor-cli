@@ -553,4 +553,85 @@ final class WatchSessionTests: XCTestCase {
         XCTAssertEqual(env?["METAPHOR_SYPHON_NAME"], "abc")
         XCTAssertNotNil(env?["METAPHOR_SOURCE_STAMP"])
     }
+    // MARK: - Roundtrip 分解計時（cli#88）
+
+    func testInitialBuildRecordsBuildAndRelaunchTimings() throws {
+        let runner = RecordingProcessRunner()  // default exitCode 0
+        let launcher = RecordingLauncher()
+        let watcher = ManualFileWatcher()
+        let console = BufferedConsole()
+        let session = makeSession(runner: runner, launcher: launcher, watcher: watcher, console: console)
+
+        try session.start()
+
+        // 起動完了後は relaunchMs 込みの最終形が読める。初回は変更検知ではないので detectMs は無い。
+        let outcome = try XCTUnwrap(session.lastBuildOutcome)
+        XCTAssertNotNil(outcome.buildMs)
+        XCTAssertNotNil(outcome.relaunchMs)
+        XCTAssertNil(outcome.detectMs)
+    }
+
+    func testReloadRecordsDetectLatencyFromSourceMtime() throws {
+        // detectMs は実ディレクトリの .swift の mtime から見積もるため tmp に実ファイルを置く。
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("metaphor-detect-\(UUID().uuidString)")
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: dir) }
+        try "let a = 1\n".write(
+            to: dir.appendingPathComponent("App.swift"), atomically: true, encoding: .utf8)
+
+        let watcher = ManualFileWatcher()
+        let session = WatchSession(
+            directory: dir,
+            swiftArguments: [],
+            console: BufferedConsole(),
+            processRunner: RecordingProcessRunner(),
+            launcher: RecordingLauncher(),
+            watcher: watcher,
+            binaryResolver: NullBinaryResolver()
+        )
+        try session.start()
+        watcher.fireChange()
+
+        let outcome = try XCTUnwrap(session.lastBuildOutcome)
+        XCTAssertFalse(outcome.initial)
+        let detect = try XCTUnwrap(outcome.detectMs)
+        XCTAssertGreaterThanOrEqual(detect, 0)
+        XCTAssertNotNil(outcome.buildMs)
+        XCTAssertNotNil(outcome.relaunchMs)
+    }
+
+    func testBuildFailureLeavesRelaunchTimingNil() throws {
+        let runner = RecordingProcessRunner()
+        runner.result = ProcessResult(exitCode: 1)
+        let launcher = RecordingLauncher()
+        let watcher = ManualFileWatcher()
+        let console = BufferedConsole()
+        let session = makeSession(runner: runner, launcher: launcher, watcher: watcher, console: console)
+
+        try session.start()
+
+        // ビルド失敗でも buildMs は残るが、起動しないので relaunchMs は無い。
+        let outcome = try XCTUnwrap(session.lastBuildOutcome)
+        XCTAssertFalse(outcome.succeeded)
+        XCTAssertNotNil(outcome.buildMs)
+        XCTAssertNil(outcome.relaunchMs)
+    }
+
+    func testTimingsSummaryFormatting() {
+        // 計時なしは nil（旧 build-status を読んだときと同じ扱い）。
+        XCTAssertNil(BuildOutcome(succeeded: true, exitCode: 0, output: "", initial: true).timingsSummary)
+
+        let full = BuildOutcome(
+            succeeded: true, exitCode: 0, output: "", initial: false,
+            detectMs: 210.34, buildMs: 1450.2, relaunchMs: 180.06)
+        XCTAssertEqual(
+            full.timingsSummary,
+            "timings: detect_ms=210.3 build_ms=1450.2 relaunch_ms=180.1")
+
+        // 一部欠落（初回ビルド）はあるものだけ載る。
+        let partial = BuildOutcome(
+            succeeded: true, exitCode: 0, output: "", initial: true, buildMs: 900.0)
+        XCTAssertEqual(partial.timingsSummary, "timings: build_ms=900.0")
+    }
 }

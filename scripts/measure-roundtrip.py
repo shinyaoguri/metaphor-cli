@@ -25,6 +25,7 @@ import argparse
 import json
 import os
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -99,6 +100,29 @@ class MCP:
                 except json.JSONDecodeError:
                     continue
         return None
+
+    def build_status(self, timeout: float = 10.0) -> dict:
+        """build_status を 1 回呼び、timings 行から roundtrip 分解値 (ms) を抜き出す。
+
+        返り値は {"detect_ms": float, "build_ms": float, "relaunch_ms": float} の
+        うち見つかったキーのみ。timings 行がなければ（旧 CLI 互換）空 dict。
+        順序は固定だが、正規表現で順序非依存にパースする。
+        """
+        resp = self.call("tools/call",
+                         {"name": "build_status", "arguments": {}},
+                         timeout=timeout)
+        if not resp:
+            return {}
+        text = "\n".join(
+            c.get("text", "") for c in resp.get("result", {}).get("content", [])
+            if c.get("type") == "text")
+        timings: dict[str, float] = {}
+        for key, val in re.findall(r"(detect_ms|build_ms|relaunch_ms)=([0-9.]+)", text):
+            try:
+                timings[key] = float(val)
+            except ValueError:
+                continue
+        return timings
 
     def close(self):
         try:
@@ -183,6 +207,8 @@ def main() -> int:
     mcp = MCP(args.cli, str(sketch))
     warm: list[float] = []
     roundtrip: list[float] = []
+    # roundtrip の分解値（WatchSession 計時）。summarize() が秒→ms 換算するため秒で蓄積。
+    breakdown: dict[str, list[float]] = {"detect_ms": [], "build_ms": [], "relaunch_ms": []}
     cold_ms = None
     try:
         mcp.call("initialize", {}, timeout=10)
@@ -224,6 +250,14 @@ def main() -> int:
                 prev_stamp = reflected.get("sourceStamp")
                 print(f"[measure] roundtrip {i+1}/{args.iterations}: "
                       f"{round(dt*1000,1)} ms / sourceStamp={prev_stamp}")
+                # 反映確認後は relaunch_ms 込みの最終値が build_status から取れる。
+                timings = mcp.build_status()
+                for key, val in timings.items():
+                    if key in breakdown:
+                        breakdown[key].append(val / 1000.0)
+                if timings:
+                    print(f"[measure]   breakdown: "
+                          + " ".join(f"{k}={v}" for k, v in timings.items()))
             else:
                 print(f"[measure] roundtrip {i+1}/{args.iterations}: TIMEOUT "
                       f"(>{args.reflect_timeout}s)", file=sys.stderr)
@@ -233,12 +267,22 @@ def main() -> int:
         if metaphor_dir.exists():
                 shutil.rmtree(metaphor_dir)
 
+    breakdown_labels = {
+        "detect_ms": "detect_ms (編集→変更検知)",
+        "build_ms": "build_ms (swift build)",
+        "relaunch_ms": "relaunch_ms (旧停止→起動完了)",
+    }
     report = {
         "sketch": str(sketch),
         "cli": args.cli,
         "cold_start_snapshot_ms": cold_ms,
         "warm_snapshot": summarize("warm_snapshot (観測往復)", warm),
         "roundtrip": summarize("roundtrip (編集→反映=基準A/B)", roundtrip),
+        # 値が 1 件も取れなかったキーは省略（旧 CLI では空 dict になる）。
+        "roundtrip_breakdown": {
+            key: summarize(breakdown_labels[key], values)
+            for key, values in breakdown.items() if values
+        },
     }
     print("\n=== RESULT (JSON) ===")
     print(json.dumps(report, indent=2, ensure_ascii=False))
@@ -253,7 +297,8 @@ def main() -> int:
 def render_markdown(r: dict) -> str:
     def row(s):
         return f"| {s['metric']} | {s['n']} | {s['p50_ms']} | {s['p95_ms']} | {s['min_ms']} | {s['max_ms']} |"
-    return "\n".join([
+    breakdown = r.get("roundtrip_breakdown", {})
+    lines = [
         "# AIループ往復時間 測定レポート (Epic #75 実測フェーズ)",
         "",
         f"- sketch: `{r['sketch']}`",
@@ -264,10 +309,20 @@ def render_markdown(r: dict) -> str:
         "|---|---|---|---|---|---|",
         row(r["warm_snapshot"]),
         row(r["roundtrip"]),
+    ]
+    # roundtrip 分解（build_status の timings 行）。値がなければ行を出さない。
+    lines += [row(breakdown[key]) for key in ("detect_ms", "build_ms", "relaunch_ms")
+              if key in breakdown]
+    lines += [
         "",
         "- **warm_snapshot** = 編集なしの観測往復（request→frame ready）。基準: 観測コスト。",
         "- **roundtrip** = 編集→リビルド→再起動→新フレーム反映（sourceStamp 変化で判定）。基準A/B。",
-    ]) + "\n"
+    ]
+    if breakdown:
+        lines.append(
+            "- **detect_ms / build_ms / relaunch_ms** = roundtrip の内訳"
+            "（build_status の timings 行より。旧 CLI では取得されない）。")
+    return "\n".join(lines) + "\n"
 
 
 if __name__ == "__main__":

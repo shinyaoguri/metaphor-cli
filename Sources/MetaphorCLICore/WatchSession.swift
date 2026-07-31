@@ -13,12 +13,43 @@ public struct BuildOutcome: Equatable, Codable {
     public let output: String
     /// 初回ビルドか（reload ではなく start 時）。
     public let initial: Bool
+    /// 変更ファイルの最終更新 → 変更検知までの推定時間（ms）。初回ビルドでは nil。
+    /// ポーリング監視では「保存 → 検知」の待ち時間に相当する。
+    public let detectMs: Double?
+    /// `swift build` の所要時間（ms）。
+    public let buildMs: Double?
+    /// ビルド成功 → 子プロセス起動完了までの時間（ms）。旧プロセスの終了・
+    /// バイナリ解決・sourceStamp 計算を含む。ビルド失敗・起動失敗時は nil。
+    public let relaunchMs: Double?
 
-    public init(succeeded: Bool, exitCode: Int32, output: String, initial: Bool) {
+    public init(
+        succeeded: Bool,
+        exitCode: Int32,
+        output: String,
+        initial: Bool,
+        detectMs: Double? = nil,
+        buildMs: Double? = nil,
+        relaunchMs: Double? = nil
+    ) {
         self.succeeded = succeeded
         self.exitCode = exitCode
         self.output = output
         self.initial = initial
+        self.detectMs = detectMs
+        self.buildMs = buildMs
+        self.relaunchMs = relaunchMs
+    }
+
+    /// 分解計時の 1 行サマリ（例: `timings: detect_ms=210.3 build_ms=1450.2 relaunch_ms=180.1`）。
+    /// `build_status` ツールと測定ハーネス（measure-roundtrip.py）が同じ形式を読む。
+    /// 計時が 1 つもなければ nil。
+    public var timingsSummary: String? {
+        var fields: [String] = []
+        if let detectMs { fields.append(String(format: "detect_ms=%.1f", detectMs)) }
+        if let buildMs { fields.append(String(format: "build_ms=%.1f", buildMs)) }
+        if let relaunchMs { fields.append(String(format: "relaunch_ms=%.1f", relaunchMs)) }
+        guard !fields.isEmpty else { return nil }
+        return "timings: " + fields.joined(separator: " ")
     }
 }
 
@@ -136,7 +167,32 @@ public final class WatchSession {
     /// 変更検出時の再ビルド+再起動。
     public func reload() {
         console.write("[watch] 変更を検出 — 再ビルド中…")
-        rebuildAndLaunch(initial: false)
+        rebuildAndLaunch(initial: false, detectMs: estimateDetectLatency())
+    }
+
+    /// 変更検知の遅延（最新 `.swift` の mtime → 現在）を見積もる（ms）。
+    /// mtime は wall clock なので Date() と比較する。走査に失敗したら nil。
+    private func estimateDetectLatency() -> Double? {
+        guard let latest = latestSwiftModification() else { return nil }
+        return max(0, Date().timeIntervalSince(latest) * 1000)
+    }
+
+    /// 監視対象（`.build` 除く）の `.swift` で最も新しい更新時刻。
+    private func latestSwiftModification() -> Date? {
+        var latest: Date?
+        if let enumerator = FileManager.default.enumerator(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) {
+            for case let url as URL in enumerator where url.pathExtension == "swift" {
+                guard let date = try? url.resourceValues(
+                    forKeys: [.contentModificationDateKey]
+                ).contentModificationDate else { continue }
+                if latest.map({ date > $0 }) ?? true { latest = date }
+            }
+        }
+        return latest
     }
 
     /// 監視と実行中スケッチを停止する。
@@ -190,19 +246,9 @@ public final class WatchSession {
         current?.sendLine(line)
     }
 
-    /// 直近ビルドの結果を記録し、その `BuildOutcome` を返す。
-    /// `captureBuildOutput=false` のときは出力テキストは空。
-    @discardableResult
-    private func recordBuildOutcome(_ result: ProcessResult, initial: Bool) -> BuildOutcome {
-        let output = [result.standardError, result.standardOutput]
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n")
-        let outcome = BuildOutcome(
-            succeeded: result.exitCode == 0,
-            exitCode: result.exitCode,
-            output: output,
-            initial: initial
-        )
+    /// `BuildOutcome` を直近結果として記録する（in-memory + 共有セッションなら
+    /// `build-status.json`）。起動完了後の relaunchMs 確定でも再度呼ばれる。
+    private func record(_ outcome: BuildOutcome) {
         buildLock.lock()
         _lastBuildOutcome = outcome
         buildLock.unlock()
@@ -210,14 +256,39 @@ public final class WatchSession {
         if shareSession {
             SharedSession.writeBuildStatus(outcome, for: directory)
         }
+    }
+
+    /// 直近ビルドの結果を記録し、その `BuildOutcome` を返す。
+    /// `captureBuildOutput=false` のときは出力テキストは空。
+    private func recordBuildOutcome(
+        _ result: ProcessResult, initial: Bool, detectMs: Double?, buildMs: Double
+    ) -> BuildOutcome {
+        let output = [result.standardError, result.standardOutput]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        let outcome = BuildOutcome(
+            succeeded: result.exitCode == 0,
+            exitCode: result.exitCode,
+            output: output,
+            initial: initial,
+            detectMs: detectMs,
+            buildMs: buildMs
+        )
+        record(outcome)
         return outcome
+    }
+
+    /// DispatchTime（モノトニック）起点からの経過 ms。
+    private func elapsedMs(since start: DispatchTime) -> Double {
+        Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
     }
 
     /// ビルドが通った場合のみ、前のスケッチを終了して新しく起動する。
     /// ビルド失敗時は動作中のスケッチを維持する（壊れた編集で窓を消さない）。
-    private func rebuildAndLaunch(initial: Bool) {
+    private func rebuildAndLaunch(initial: Bool, detectMs: Double? = nil) {
         onBuildWillStart?(initial)
 
+        let buildStart = DispatchTime.now()
         let build: ProcessResult
         do {
             build = try processRunner.run(
@@ -233,7 +304,9 @@ public final class WatchSession {
             build = ProcessResult(exitCode: -1)
         }
 
-        let outcome = recordBuildOutcome(build, initial: initial)
+        let outcome = recordBuildOutcome(
+            build, initial: initial, detectMs: detectMs, buildMs: elapsedMs(since: buildStart)
+        )
         onBuildFinished?(outcome)
 
         guard build.exitCode == 0 else {
@@ -245,6 +318,7 @@ public final class WatchSession {
             return
         }
 
+        let relaunchStart = DispatchTime.now()
         current?.terminate()
         current = nil
 
@@ -277,7 +351,21 @@ public final class WatchSession {
                 currentDirectory: directory,
                 environment: childEnvironment
             )
+            // 起動完了で relaunchMs を確定し、分解計時込みの最終形を記録し直す。
+            let final = BuildOutcome(
+                succeeded: outcome.succeeded,
+                exitCode: outcome.exitCode,
+                output: outcome.output,
+                initial: outcome.initial,
+                detectMs: outcome.detectMs,
+                buildMs: outcome.buildMs,
+                relaunchMs: elapsedMs(since: relaunchStart)
+            )
+            record(final)
             console.write(initial ? "[watch] 実行中" : "[watch] リロードしました")
+            if let timings = final.timingsSummary {
+                console.write("[watch] \(timings)")
+            }
             onChildLaunched?()  // ビューアに Syphon サーバーの差し替え追従を促す。
         } catch {
             console.writeError("[watch] 起動失敗: \(error)")
