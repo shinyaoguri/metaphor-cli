@@ -102,6 +102,19 @@ final class SketchToolHandlerTests: XCTestCase {
         XCTAssertFalse(result.isError)
     }
 
+    func testBuildStatusIncludesTimingsLine() {
+        let box = Box()
+        box.outcome = BuildOutcome(
+            succeeded: true, exitCode: 0, output: "", initial: false,
+            detectMs: 210.3, buildMs: 1450.2, relaunchMs: 180.1)
+        let result = makeHandler(box).call(name: "build_status", arguments: [:])
+
+        // 測定ハーネス（measure-roundtrip.py）がこの行を正規表現で読む。
+        let text = result.content.first?["text"] as? String
+        XCTAssertTrue(
+            text?.contains("timings: detect_ms=210.3 build_ms=1450.2 relaunch_ms=180.1") == true)
+    }
+
     func testBuildStatusWithoutResult() {
         let result = makeHandler(Box()).call(name: "build_status", arguments: [:])
         XCTAssertFalse(result.isError)

@@ -126,7 +126,8 @@ public final class SketchToolHandler: MCPToolHandling {
             MCPToolDefinition(
                 name: "build_status",
                 description: "直近の `swift build` の成否・終了コード・エラー出力を返す。"
-                    + "ソースを編集した後に、その編集がコンパイルできたかの確認に使う。",
+                    + "ソースを編集した後に、その編集がコンパイルできたかの確認に使う。"
+                    + "リロード一巡の分解計時（timings: detect_ms/build_ms/relaunch_ms）も載る。",
                 inputSchema: ["type": "object", "properties": [String: Any]()]
             ),
             MCPToolDefinition(
@@ -247,9 +248,12 @@ public final class SketchToolHandler: MCPToolHandling {
         guard let outcome = buildStatusProvider() else {
             return .text("build_status: まだビルド結果がありません。")
         }
-        let head = outcome.succeeded
+        var head = outcome.succeeded
             ? "build OK (exit \(outcome.exitCode))"
             : "build FAILED (exit \(outcome.exitCode))"
+        if let timings = outcome.timingsSummary {
+            head += "\n\(timings)"
+        }
         let body = outcome.output.isEmpty ? "" : "\n\n\(outcome.output)"
         return MCPToolResult(
             content: [["type": "text", "text": head + body]],

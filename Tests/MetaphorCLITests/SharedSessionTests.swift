@@ -87,6 +87,19 @@ final class SharedSessionTests: XCTestCase {
         XCTAssertEqual(read, outcome)
     }
 
+    func testBuildStatusRoundTripWithTimings() {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // 分解計時（cli#88）も build-status.json を往復する。
+        let outcome = BuildOutcome(
+            succeeded: true, exitCode: 0, output: "", initial: false,
+            detectMs: 210.3, buildMs: 1450.2, relaunchMs: 180.1)
+        SharedSession.writeBuildStatus(outcome, for: dir)
+
+        XCTAssertEqual(SharedSession.readBuildStatus(for: dir), outcome)
+    }
+
     func testReadMissingBuildStatusIsNil() {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
