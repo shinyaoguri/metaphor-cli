@@ -60,7 +60,7 @@ public func runViewerWatch(
         console: console,
         processRunner: FoundationProcessRunner(),
         launcher: FoundationProcessLauncher(),
-        watcher: PollingFileWatcher(directory: directory),
+        watcher: FSEventsFileWatcher(directory: directory),
         extraEnvironment: childEnvironment,
         shareSession: probeEnabled
     )

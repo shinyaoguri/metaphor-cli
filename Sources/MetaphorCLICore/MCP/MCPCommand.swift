@@ -89,7 +89,7 @@ public struct MCPCommand {
                 console: console,   // print は dup2 により stderr に出る
                 processRunner: FoundationProcessRunner(),
                 launcher: FoundationProcessLauncher(),
-                watcher: PollingFileWatcher(directory: directory),
+                watcher: FSEventsFileWatcher(directory: directory),
                 extraEnvironment: [
                     "METAPHOR_VIEWER": "1",   // ヘッドレス + タイマー駆動
                     "METAPHOR_PROBE": "1",    // Probe を自動登録
