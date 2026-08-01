@@ -204,7 +204,7 @@ public struct WatchCommand {
             console: console,
             processRunner: processRunner,
             launcher: FoundationProcessLauncher(),
-            watcher: PollingFileWatcher(directory: currentDirectory),
+            watcher: FSEventsFileWatcher(directory: currentDirectory),
             extraEnvironment: environment.isEmpty ? nil : environment,
             shareSession: parsed.probeEnabled
         )

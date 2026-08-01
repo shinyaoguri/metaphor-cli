@@ -10,11 +10,37 @@ public protocol FileWatching: AnyObject {
     func stop()
 }
 
+/// 監視対象ファイルの「パス:更新時刻」を連結したソート済み署名。
+///
+/// パッケージディレクトリ配下の全 `*.swift`（`Package.swift` 含む）を対象とし、
+/// レイアウト（慣習的な `Sources/` / カスタム `path:` のどちらでも）に依存しない。
+/// `.build` や `.git` などの隠しディレクトリは `.skipsHiddenFiles` で除外される。
+/// ``PollingFileWatcher`` と ``FSEventsFileWatcher`` が変更判定に共用する。
+func swiftSourceSignature(in directory: URL, fileManager: FileManager = .default) -> String {
+    var entries: [String] = []
+
+    if let enumerator = fileManager.enumerator(
+        at: directory,
+        includingPropertiesForKeys: [.contentModificationDateKey],
+        options: [.skipsHiddenFiles]
+    ) {
+        for case let url as URL in enumerator where url.pathExtension == "swift" {
+            if let date = try? url.resourceValues(
+                forKeys: [.contentModificationDateKey]
+            ).contentModificationDate {
+                entries.append("\(url.path):\(date.timeIntervalSince1970)")
+            }
+        }
+    }
+
+    return entries.sorted().joined(separator: "|")
+}
+
 /// `Sources/**/*.swift` と `Package.swift` の更新時刻を定期的に走査し、
 /// 署名（連結文字列）が変わったら通知するポーリング型ウォッチャ。
 ///
-/// kqueue/vnode の再帰監視より単純で堅牢。ポーリング間隔が連続保存の
-/// デバウンスも兼ねる。
+/// 既定では ``FSEventsFileWatcher`` を使う。本実装はその安全網と同じ判定を
+/// 全面ポーリングで行う予備実装で、テストや FSEvents を避けたい場合に使う。
 public final class PollingFileWatcher: FileWatching {
     private let directory: URL
     private let interval: TimeInterval
@@ -51,28 +77,7 @@ public final class PollingFileWatcher: FileWatching {
         timer = nil
     }
 
-    /// 監視対象ファイルの「パス:更新時刻」を連結したソート済み署名。
-    ///
-    /// パッケージディレクトリ配下の全 `*.swift`（`Package.swift` 含む）を対象とし、
-    /// レイアウト（慣習的な `Sources/` / カスタム `path:` のどちらでも）に依存しない。
-    /// `.build` や `.git` などの隠しディレクトリは `.skipsHiddenFiles` で除外される。
     private func signature() -> String {
-        var entries: [String] = []
-
-        if let enumerator = fileManager.enumerator(
-            at: directory,
-            includingPropertiesForKeys: [.contentModificationDateKey],
-            options: [.skipsHiddenFiles]
-        ) {
-            for case let url as URL in enumerator where url.pathExtension == "swift" {
-                if let date = try? url.resourceValues(
-                    forKeys: [.contentModificationDateKey]
-                ).contentModificationDate {
-                    entries.append("\(url.path):\(date.timeIntervalSince1970)")
-                }
-            }
-        }
-
-        return entries.sorted().joined(separator: "|")
+        swiftSourceSignature(in: directory, fileManager: fileManager)
     }
 }
