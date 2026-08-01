@@ -40,7 +40,8 @@ GitHub Release からピン留め取得、checksum 検証あり）。
   `WatchCommand.swift`（`Watch*`/`ProcessLaunching`/`FileWatching` に分割）/
   `UpdateCommand.swift` / `MCPCommand.swift`。
 - watch コア: `WatchSession.swift`（ビルド→起動→再起動の制御）、`ProcessLaunching.swift`
-  （非ブロッキング起動・stdin パイプ）、`FileWatching.swift`（ポーリング監視）。
+  （非ブロッキング起動・stdin パイプ）、`FileWatching.swift`（監視の抽象 + ポーリング予備実装）、
+  `FSEventsFileWatcher.swift`（既定の FSEvents 監視 + 安全ポーリング併走）。
 - MCP: `MCP/MCPServer.swift`（stdio JSON-RPC ループ）、`MCP/MCPProtocol.swift`
   （`MCPToolHandling` / `MCPToolDefinition`）、`MCP/SketchToolHandler.swift`（4 ツール実装）。
 - metrics（`run`/`watch` の `--metrics`）: `Metrics/MetricsPoller.swift`（Probe ポーリング
