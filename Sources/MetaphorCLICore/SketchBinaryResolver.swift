@@ -34,7 +34,12 @@ public struct SwiftPMBinaryResolver: SketchBinaryResolving {
             return nil
         }
         let path = (binDir as NSString).appendingPathComponent(product)
-        return fileManager.isExecutableFile(atPath: path) ? path : nil
+        guard fileManager.isExecutableFile(atPath: path) else {
+            console?.writeError(
+                "[watch] バイナリ解決に失敗（\(path) が実行可能でない）— swift run にフォールバックします")
+            return nil
+        }
+        return path
     }
 
     /// `swift build --show-bin-path` の出力（ビルド成果物ディレクトリ）。
@@ -59,7 +64,13 @@ public struct SwiftPMBinaryResolver: SketchBinaryResolving {
         return path.isEmpty ? nil : path
     }
 
-    /// `swift package dump-package` の JSON から最初の executable プロダクト名を得る。
+    /// `swift package dump-package` の JSON から実行ファイル名を得る。
+    ///
+    /// `products` に executable があればその名前。`products` 宣言のないパッケージ
+    /// （`executableTarget` だけの、example・テンプレートの標準形）では SwiftPM が
+    /// **ターゲット名**で実行ファイルを生成するので、executable ターゲット名へ
+    /// フォールバックする。ここが nil を返すと呼び出し側は毎リロードで
+    /// dump-package をやり直すため、解決できない理由は必ずログに残す。
     private func firstExecutableProduct(directory: URL) -> String? {
         let result: ProcessResult
         do {
@@ -75,17 +86,29 @@ public struct SwiftPMBinaryResolver: SketchBinaryResolving {
         }
         guard result.exitCode == 0,
         let data = result.standardOutput.data(using: .utf8),
-        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-        let products = json["products"] as? [[String: Any]] else {
+        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            console?.writeError("[watch] バイナリ解決に失敗（dump-package が exit \(result.exitCode) / JSON 解釈不能）— swift run にフォールバックします")
             return nil
         }
-        for product in products {
-            // executable プロダクトは type に "executable" キーを持つ。
-            if let type = product["type"] as? [String: Any], type.keys.contains("executable"),
-               let name = product["name"] as? String {
-                return name
+        // executable プロダクトは type に "executable" キーを持つ（辞書形式）。
+        if let products = json["products"] as? [[String: Any]] {
+            for product in products {
+                if let type = product["type"] as? [String: Any], type.keys.contains("executable"),
+                   let name = product["name"] as? String {
+                    return name
+                }
             }
         }
+        // executable ターゲットの type は文字列 "executable"。
+        if let targets = json["targets"] as? [[String: Any]] {
+            for target in targets {
+                if target["type"] as? String == "executable",
+                   let name = target["name"] as? String {
+                    return name
+                }
+            }
+        }
+        console?.writeError("[watch] バイナリ解決に失敗（executable product/target が見つからない）— swift run にフォールバックします")
         return nil
     }
 }
