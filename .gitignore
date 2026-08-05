@@ -15,3 +15,12 @@ DerivedData/
 # Python bytecode cache (scripts/measure-roundtrip.py 等の実行で生成)
 __pycache__/
 *.pyc
+
+# 秘密情報の置き場（コミットしない）
+.env
+.env.*
+!.env.example
+
+# Claude Code のマシンローカル成果物（settings.json だけは共有するため追跡する）
+.claude/worktrees/
+.claude/settings.local.json

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 描画・スケッチ API の問題（metaphor 本体）
+    url: https://github.com/shinyaoguri/metaphor/issues/new
+    about: 描画結果・Sketch API・シェーダなどライブラリ側の事象は metaphor リポジトリへ。両リポに跨る事象（CONTRACT.md / Probe wire format / METAPHOR_* 環境変数）は両方に立てて相互リンクしてください。
