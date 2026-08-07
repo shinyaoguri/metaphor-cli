@@ -91,7 +91,8 @@ Actions が自動発行する `GITHUB_TOKEN` は `metaphor-cli` にしかスコ�
    - Repository permissions: **Contents: Read and write** のみ
      （Metadata: Read-only は自動付与）
    - Where can this GitHub App be installed?: Only on this account
-2. 作成後の画面で **App ID** を控える。
+2. 作成後の General 画面で **Client ID**（`Iv23li...` 形式）を控える。
+   すぐ上にある App ID とは別の値なので取り違えないこと。
 3. 同じ画面下部の Private keys → **Generate a private key** で `.pem` を
    ダウンロードする（再ダウンロード不可。紛失したら再生成する）。
 4. 左メニュー Install App → 自分のアカウントに install。
@@ -99,9 +100,12 @@ Actions が自動発行する `GITHUB_TOKEN` は `metaphor-cli` にしかスコ�
    `shinyaoguri/homebrew-tap` のみを選ぶ。
 5. `metaphor-cli` repo の Settings → Secrets and variables → Actions →
    New repository secret で 2 つ登録する。
-   - `HOMEBREW_TAP_APP_ID` — 手順 2 の App ID
+   - `HOMEBREW_TAP_APP_CLIENT_ID` — 手順 2 の Client ID
    - `HOMEBREW_TAP_APP_PRIVATE_KEY` — 手順 3 の `.pem` の**中身全体**
      （`-----BEGIN...` から `-----END...` まで、改行を含めてそのまま貼る）
+
+   Client ID 自体は秘密ではありませんが、private key と対で扱うほうが
+   参照箇所が 1 つにまとまるため secret に置いています。
 
 Release workflow の `Mint homebrew-tap token` step
 (`actions/create-github-app-token`) がこの 2 つからトークンを発行し、
