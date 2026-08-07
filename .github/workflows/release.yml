@@ -215,12 +215,27 @@ jobs:
       # --- Push the generated Formula to shinyaoguri/homebrew-tap ---
       # Only stable releases land in the tap. Prereleases stay attached to the
       # GitHub Release for direct installer / manual `brew install <url>` use.
+      #
+      # GITHUB_TOKEN is scoped to this repository, so pushing to the tap needs
+      # separate credentials. A GitHub App mints one that expires within the
+      # hour: nothing to rotate on a schedule, and a leak cannot outlive the
+      # run. See docs/homebrew.md for the one-time App setup.
+      - name: Mint homebrew-tap token
+        id: tap-token
+        if: env.IS_PRERELEASE == 'false'
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.HOMEBREW_TAP_APP_ID }}
+          private-key: ${{ secrets.HOMEBREW_TAP_APP_PRIVATE_KEY }}
+          owner: shinyaoguri
+          repositories: homebrew-tap
+
       - name: Checkout homebrew-tap
         if: env.IS_PRERELEASE == 'false'
         uses: actions/checkout@v6
         with:
           repository: shinyaoguri/homebrew-tap
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          token: ${{ steps.tap-token.outputs.token }}
           path: tap
           fetch-depth: 1
 
