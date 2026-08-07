@@ -36,7 +36,7 @@ jobs:
   release:
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -232,7 +232,7 @@ jobs:
 
       - name: Checkout homebrew-tap
         if: env.IS_PRERELEASE == 'false'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: shinyaoguri/homebrew-tap
           token: ${{ steps.tap-token.outputs.token }}
