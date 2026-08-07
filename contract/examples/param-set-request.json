@@ -1,0 +1,19 @@
+{
+  "id" : "01J2ZK9M3QW8XV4T7YB0C5D6EF",
+  "values" : {
+    "count" : 256,
+    "mode" : "multiply",
+    "origin" : [
+      320,
+      180
+    ],
+    "radius" : 120.5,
+    "showGrid" : true,
+    "tint" : [
+      1,
+      0.5,
+      0.25,
+      1
+    ]
+  }
+}

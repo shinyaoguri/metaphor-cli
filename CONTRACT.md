@@ -48,6 +48,7 @@
 | 4 | **Probe ファイル契約**<br>`.metaphor/probe/request.json`（リクエスト）/ `.metaphor/probe/current/frame.{png,json}`（単一フレーム出力）/ `.metaphor/probe/current/sequence/`（連続フレーム出力）と `frame.json` / `sequence.json` スキーマ、`ProbeRequest` のフィールド（`id` / `label` / `scale` / `frames` / `every`） | `metaphor`（`MetaphorProbeConfig.swift` / `ProbeFrameMetadata.swift` / `ProbeSequenceManifest.swift` / `ProbeRequest.swift`） | AI エージェント・ツール（`metaphor-cli` の `snapshot` / `capture_sequence`） |
 | 5 | **Syphon サーバー名 / headless 挙動**<br>`METAPHOR_VIEWER=1` で `METAPHOR_SYPHON_NAME` のサーバーへ publish | `metaphor` headless モード（`SketchRunner.swift`） | `metaphor-cli`（`SyphonFrameSource.swift`） |
 | 6 | **AI ドキュメントのパス/ファイル名**<br>`llms.txt` / `llms-sketch.txt` / `docs/ai/examples-index.{md,json}` | `metaphor` が用意（`llms.txt` / `examples-index` は生成物＝`make llms-txt` / `make examples-index`、`llms-sketch.txt` は**手書き**。いずれもリポジトリにコミット） | `metaphor-cli` の MCP `api_reference` ツール（`MetaphorDocsLocator.swift` / `SketchToolHandler.swift`） |
+| 7 | **Parameter Store ファイル契約**<br>`.metaphor/params/params.json`（現在値 + 宣言情報の出力）/ `.metaphor/params/set-request.json`（外部からの更新要求）と `params.schema.json` / `param-set-request.schema.json`、環境変数 `METAPHOR_PARAMS`（`0` でオプトアウト） | `metaphor`（`Sources/MetaphorCore/Parameters/` の `ParameterPlugin.swift` / `ParameterFile.swift` / `ParameterStore.swift`） | AI エージェント・ツール（`metaphor-cli` の `params` / `set_param` MCP ツールは**未実装**＝Issue で追跡） |
 
 ### `frame.json` スキーマのバージョニング（契約点 4 の補足）
 
@@ -85,9 +86,11 @@
 
 ### wire スキーマの正典（契約点 4 の補足）
 
-`request.json` / `frame.json` / `sequence.json` の **wire 形式（JSON の構造・キー・値域・
+`request.json` / `frame.json` / `sequence.json`（契約点 4）と `params.json` /
+`set-request.json`（契約点 7）の **wire 形式（JSON の構造・キー・値域・
 enum・`schemaVersion`）の正典は `contract/*.schema.json`**（JSON Schema draft 2020-12、
-両リポジトリに同一内容で置く）。Swift 実装（`Sources/MetaphorCore/Probe/`）が意味の正典で、
+両リポジトリに同一内容で置く）。Swift 実装（`Sources/MetaphorCore/Probe/` /
+`Sources/MetaphorCore/Parameters/`）が意味の正典で、
 スキーマはそれを機械可読に写したもの。設計判断は [docs/adr/0004-wire-schema-canon-vs-shared-types.md](docs/adr/0004-wire-schema-canon-vs-shared-types.md)
 （Issue #119 案D 不採用・案C+ 採用）と [docs/design/external-coupling-and-contract.md](docs/design/external-coupling-and-contract.md)。
 
@@ -152,6 +155,43 @@ consumer がタイムアウトではなく id 一致で失敗を検知できる�
   `sequence.json` の ready 規約で contact sheet と manifest を返す。トークン自体は
   producer = metaphor が定義）。
 
+### Parameter Store `.metaphor/params/`（契約点 7）
+
+スケッチが `@Param` で宣言したパラメータを、**再ビルドなしで外部から読み書きする**ための
+ファイル契約です。Probe（契約点 4）と同じ流儀——アトミック書込・mtime ポーリング・
+`id` エコー・`contract/*.schema.json` が wire 形式の正典——を `.metaphor/` 配下の
+別ファセットとして再利用します（新しい RPC は作らない）。
+
+- **`params.json`（producer = スケッチが唯一の書き手）**: `schemaVersion`（現行 = 1）/
+  `revision`（値が変わるたびに増える単調カウンタ。プロセス起動時にも 1 つ進む）/
+  `appliedRequestId?`（最後に処理した set-request の `id` エコー）/ `warnings[]`
+  （直近の set-request で拒否された理由）/ `params[]{name,type,value,min?,max?,choices?}`
+  （**宣言順**）。型セットは `float` / `int` / `bool` / `string` / `color` / `vec2` / `vec3`
+  で、`value` の JSON 形状は `type` が決める（`vec2` / `vec3` / `color` は 2 / 3 / 4 要素の
+  数値配列）。書き出しは `params.json.tmp` → rename の**アトミック書込**。
+- **`set-request.json`（consumer = AI エージェント / ツールが書く）**: `{id, values{name: value}}`。
+  **consumer は必ずアトミックに書く**こと（`set-request.json.tmp` → rename。契約点 4 の
+  `request.json` と同じ理由）。**`id` はリクエストごとに必ず変える**（producer は同一 id を
+  再処理しない）。producer は次フレームの `pre()` で読み、宣言された型に沿って解釈する。
+- **拒否と反映確認**: 未知の名前・型不一致・`choices` 外の値は**適用されず**、理由が
+  `params.json` の `warnings[]` に載る（全件拒否でも `appliedRequestId` は更新されるため、
+  consumer はタイムアウトを待たずに結果を判定できる）。`min` / `max` を持つ数値は
+  外部からの書き込みがその範囲に**クランプ**される。競合ポリシーは
+  **last-writer-wins**（人間の GUI ドラッグと `set_param` は同一ストアの対称クライアント）。
+- **永続化**: 値が変わると `params.json` が書き直され（GUI ドラッグ等は ~200ms デバウンス、
+  set-request 起因は即時）、次回起動時に**名前 + 型が一致するものだけ**復元される
+  （型が変わった値は破棄）。`setup()` / `draw()` は最初から復元値を見る。
+- **有効化**: `@Param` が 1 つでも宣言されていれば自動（素の `swift run` でも永続化が効く）。
+  オプトアウトは環境変数 `METAPHOR_PARAMS=0`（契約点 2 の env var 群と同じ扱い）。
+- **consumer 規約**: 未知のキーは無視する（`frame.json` と同じ additive ルール）。
+  キーのリネーム／削除／型変更は破壊的変更で、`schemaVersion` を上げ、両リポジトリの
+  本節を同時に更新すること。
+- **実装状況**: producer（metaphor）は実装済み。consumer 側の MCP ツール
+  （`params` = 読み取り / `set_param` = 書き込み → `appliedRequestId` / `revision` の
+  エコー待ち）は `metaphor-cli` の**未実装項目**で、対応 Issue で追跡する。
+  それまでの間も、AI エージェントは 2 ファイルを直接読み書きすれば操作できる
+  （cli 非依存のライブラリ機能である点は Probe と同じ）。
+
 ### AI ドキュメント供給（契約点 6 の補足）
 
 `metaphor new` で生成したスケッチは、`metaphor mcp` の `api_reference` ツールを通じて
@@ -215,6 +255,7 @@ pin 形式・AI ドキュメントのパス/ファイル名）を変更・追加
 - `Sources/MetaphorCore/Sketch/SketchRunner.swift` — 環境変数読み取り・headless
 - `Sources/MetaphorCore/Input/InputInjectionPlugin.swift` — stdin JSON Lines 解析
 - `Sources/MetaphorCore/Probe/MetaphorProbeConfig.swift` / `ProbeFrameMetadata.swift` / `ProbeRequest.swift` / `ProbeSequenceManifest.swift` — Probe 契約（単一フレーム + 連続フレーム）
+- `Sources/MetaphorCore/Parameters/ParameterPlugin.swift` / `ParameterFile.swift` / `ParameterStore.swift` / `Param.swift` — Parameter Store 契約（契約点 7。`.metaphor/params/` のパス・`METAPHOR_PARAMS`・wire 形式）
 - `llms.txt` / `docs/ai/examples-index.{md,json}`（生成物）・`llms-sketch.txt`（手書き）— AI ドキュメント（契約点 6）
 - `.github/workflows/release.yml` — Syphon ビルド・Release・cli への dispatch
 

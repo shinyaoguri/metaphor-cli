@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shinyaoguri/metaphor/contract/param-set-request.schema.json",
+  "title": "Parameter Store set-request.json",
+  "description": "Consumer (metaphor-cli の MCP set_param ツール、または任意の AI エージェント) が .metaphor/params/set-request.json へアトミックに (.tmp → rename) 書き込むパラメータ更新要求。Producer は次フレームの pre() で読み、宣言された型に沿って解釈する。型が合わない値は拒否され、理由が params.json の warnings に載る。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "values"],
+  "properties": {
+    "id": {
+      "description": "リクエストの一意な識別子。リクエストごとに必ず変える (producer は同一 id を再処理しない)。処理されると params.json の appliedRequestId にエコーされる。",
+      "type": "string"
+    },
+    "values": {
+      "description": "パラメータ名 → 新しい値。値の JSON 形状は params.json の該当エントリの type に従う (float/int は数値、bool は真偽値、string は文字列、vec2/vec3/color は 2/3/4 要素の数値配列)。未知の名前は無視され warnings に載る。",
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          { "type": "number" },
+          { "type": "boolean" },
+          { "type": "string" },
+          {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 2,
+            "maxItems": 4
+          }
+        ]
+      }
+    }
+  }
+}

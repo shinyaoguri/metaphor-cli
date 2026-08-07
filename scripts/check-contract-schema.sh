@@ -53,6 +53,8 @@ validate() {
 validate frame.schema.json    contract/examples/frame.json contract/examples/frame-minimal.json contract/examples/frame-failure.json
 validate request.schema.json  contract/examples/request.json contract/examples/request-minimal.json
 validate sequence.schema.json contract/examples/sequence.json
+validate params.schema.json   contract/examples/params.json contract/examples/params-minimal.json
+validate param-set-request.schema.json contract/examples/param-set-request.json
 
 if [ "$fail" -ne 0 ]; then
   echo ""
