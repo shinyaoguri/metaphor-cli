@@ -70,29 +70,52 @@ metaphor version
 metaphor examples
 ```
 
-## PAT Setup
+## Tap Credentials (GitHub App)
 
-tap repo への push は `GITHUB_TOKEN` では行えないため、PAT を
-metaphor-cli リポジトリの secret として登録します。
+Actions が自動発行する `GITHUB_TOKEN` は `metaphor-cli` にしかスコープされず、
+別リポジトリである tap には push できません。そのため tap への push だけは
+専用の資格情報を使います。
 
-1. GitHub の Settings → Developer settings → Personal access tokens →
-   **Fine-grained tokens** で新規発行する。
-   - Resource owner: `shinyaoguri`
-   - Repository access: `Only select repositories` →
-     `shinyaoguri/homebrew-tap` のみ
-   - Repository permissions:
-     - **Contents**: Read and write
-     - **Metadata**: Read-only (自動付与)
-   - Expiration: 任意（社内ポリシーがあればそれに合わせる）
-2. 発行された token をコピーする。
-3. `metaphor-cli` repo の Settings → Secrets and variables → Actions →
-   New repository secret で登録する。
-   - Name: `HOMEBREW_TAP_TOKEN`
-   - Secret: 上記の token
-4. workflow の `Checkout homebrew-tap` step が `secrets.HOMEBREW_TAP_TOKEN`
-   を参照しているので、これで自動 push が動くようになる。
+採用しているのは **GitHub App のインストールトークン**です。App の private key
+自体は無期限ですが、そこから発行されるトークンは 1 時間で失効するため、
+定期的な rotate が要らず、万一漏れても権限が残り続けません。PAT
+(fine-grained) は最長 1 年で切れるたびにリリースが止まり、Deploy key は
+無期限の push 権限が漏洩時にそのまま残るため、いずれも採用していません。
 
-token を rotate するときは同じ secret 名で値だけ差し替えれば OK。
+### 初回セットアップ（一度だけ）
+
+1. GitHub の Settings → Developer settings → **GitHub Apps** → New GitHub App
+   - GitHub App name: 任意（例 `metaphor-tap-publisher`）
+   - Homepage URL: 任意（リポジトリ URL でよい）
+   - **Webhook: Active のチェックを外す**（不要）
+   - Repository permissions: **Contents: Read and write** のみ
+     （Metadata: Read-only は自動付与）
+   - Where can this GitHub App be installed?: Only on this account
+2. 作成後の画面で **App ID** を控える。
+3. 同じ画面下部の Private keys → **Generate a private key** で `.pem` を
+   ダウンロードする（再ダウンロード不可。紛失したら再生成する）。
+4. 左メニュー Install App → 自分のアカウントに install。
+   Repository access は **Only select repositories** →
+   `shinyaoguri/homebrew-tap` のみを選ぶ。
+5. `metaphor-cli` repo の Settings → Secrets and variables → Actions →
+   New repository secret で 2 つ登録する。
+   - `HOMEBREW_TAP_APP_ID` — 手順 2 の App ID
+   - `HOMEBREW_TAP_APP_PRIVATE_KEY` — 手順 3 の `.pem` の**中身全体**
+     （`-----BEGIN...` から `-----END...` まで、改行を含めてそのまま貼る）
+
+Release workflow の `Mint homebrew-tap token` step
+(`actions/create-github-app-token`) がこの 2 つからトークンを発行し、
+続く `Checkout homebrew-tap` に渡します。
+
+### 運用
+
+期限切れによる rotate は不要です。private key を差し替えたいときは、App の
+画面で新しい key を生成して `HOMEBREW_TAP_APP_PRIVATE_KEY` を上書きし、
+古い key を App 側から削除します。
+
+tap への push が `Bad credentials` や 403 で落ちるときは、App が
+`homebrew-tap` に install されているか、その install の Repository access に
+`homebrew-tap` が含まれているかを確認してください。
 
 ## Update Behavior
 
