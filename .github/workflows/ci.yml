@@ -15,7 +15,7 @@ jobs:
   build-and-test:
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Check cross-repo contract
         run: ./scripts/check-contract.sh
       - name: Check wire-schema contract
