@@ -36,6 +36,14 @@
     },
     "sampleGrid" : 32
   },
+  "params" : {
+    "revision" : 7,
+    "values" : {
+      "radius" : 120.0,
+      "showGrid" : false,
+      "tint" : [1, 1, 1, 1]
+    }
+  },
   "performance" : {
     "fps" : 59.8,
     "targetFPS" : 60,
