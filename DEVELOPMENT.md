@@ -43,7 +43,11 @@ GitHub Release からピン留め取得、checksum 検証あり）。
   （非ブロッキング起動・stdin パイプ）、`FileWatching.swift`（監視の抽象 + ポーリング予備実装）、
   `FSEventsFileWatcher.swift`（既定の FSEvents 監視 + 安全ポーリング併走）。
 - MCP: `MCP/MCPServer.swift`（stdio JSON-RPC ループ）、`MCP/MCPProtocol.swift`
-  （`MCPToolHandling` / `MCPToolDefinition`）、`MCP/SketchToolHandler.swift`（4 ツール実装）。
+  （`MCPToolHandling` / `MCPToolDefinition`）、`MCP/SketchToolHandler.swift`（公開ツールの
+  定義と dispatch）。ファイル往復を伴うツールは個別クラスに分かれる:
+  `MCP/ProbeSnapshotTool.swift` / `MCP/ProbeSequenceTool.swift`（契約点 4）、
+  `MCP/ParameterStoreTool.swift`（契約点 7 = `params` / `set_param`）。いずれも
+  「新しい `id` を書き、その id のエコーで ready を判定する」規約を共有する。
 - metrics（`run`/`watch` の `--metrics`）: `Metrics/MetricsPoller.swift`（Probe ポーリング
   と MCP との競合調停）、`Metrics/MetricsReporter.swift`（整形とステータスライン表示）。
 

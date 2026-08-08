@@ -281,12 +281,23 @@ Example:
 | `snapshot` | 現在フレームの画像（PNG）と内部状態（`frame` / `time` / `probe()` 値 / 色・領域統計 / 実測パフォーマンス / 警告）を返す | 「いま見えている絵を確認して」 |
 | `capture_sequence` | 連続フレーム列を採取し、コンタクトシート画像とフレーム別 manifest を返す（動き・リズム・遷移を観測する） | 「回転が滑らかか 2 秒ぶん観測して」 |
 | `input` | 実行中のスケッチへマウス・キー入力を送る（単独モードのみ） | 「マウスを中央へ動かして反応を見て」 |
+| `params` | スケッチが `@Param` で宣言したパラメータの一覧（型・現在値・レンジ・`choices`）を返す | 「いま調整できる値を教えて」 |
+| `set_param` | パラメータ値を**再ビルドなしで**書き換え、反映後の値を返す | 「半径を 40〜120 で振って一番良い値を探して」 |
 | `build_status` | 直近の `swift build` の成否とエラーを返す | 「いまの編集がビルドできたか確認して」 |
 | `api_reference` | 依存先 metaphor の API ドキュメント（作法ガイド / 全 API / サンプル索引）を返す | 「circle の API を調べてから直して」 |
 
 スケッチの性能診断（重い/軽い・どれくらい重いか）は、`snapshot` が返す `performance`
 （実測 `fps` / `targetFPS` / `frameTimeMs` / `memoryMB` / `cpuPercent` / `thermalState`）で
 画像に頼らず判定できます。フィールド定義は [CONTRACT.md](CONTRACT.md) を参照してください。
+
+**値の探索は `set_param` が速い。** `@Param` で宣言された値は再ビルドを伴わない
+ファイル往復（1 フレーム）で書き換わるため、ソースを編集して再ビルドする往復より一桁
+速く、しかも**人間が GUI スライダーで触るのと同じストア**を動かします（競合は
+last-writer-wins）。数値の調整は `set_param` → `snapshot`、構造の変更はコード編集、と
+使い分けるのが定石です。`snapshot` が返す `frame.json` には撮影時の値
+（`params.revision` / `params.values`）も載るので、「この絵はどの値のときのものか」が
+1 回の観測で確定します。宣言の書き方（`@Param var radius: Float = 120`）は
+[metaphor 側のドキュメント](https://github.com/shinyaoguri/metaphor)を参照してください。
 
 ### セットアップ
 
@@ -330,7 +341,8 @@ Example:
    ┌──────────────────────────────────────────────┐
    │  metaphor mcp .   （ヘッドレスでスケッチを実行）   │
    │  ・snapshot / capture_sequence  観測           │
-   │  ・input                        操作           │
+   │  ・input / set_param            操作           │
+   │  ・params                       宣言の把握      │
    │  ・build_status                 検証           │
    │  ・api_reference                API 参照       │
    └──────────────────────────────────────────────┘
@@ -353,7 +365,7 @@ VSCode でコードを編集しながら、同じ実行中スケッチを AI に
 
 2. **次に**、同じディレクトリで AI クライアント（Claude Code など）を開きます。クライアントが裏で起動する `metaphor mcp` は、**新しくスケッチを起動せず、動作中の `watch` セッションにアタッチ**して観測します。
 
-3. AI に依頼します（`snapshot` / `capture_sequence` / `build_status` / `api_reference`）。編集は人間（VSCode）も AI（ファイルを直接編集）もディスクに書くだけで、`watch` が再ビルドして両者へ反映されます。
+3. AI に依頼します（`snapshot` / `capture_sequence` / `params` / `set_param` / `build_status` / `api_reference`）。編集は人間（VSCode）も AI（ファイルを直接編集）もディスクに書くだけで、`watch` が再ビルドして両者へ反映されます。
 
 > **なぜ順序が重要か。** `metaphor mcp` が「動作中の `watch` にアタッチするか／自前で別インスタンスを起動するか」を決めるのは、**起動した瞬間に 1 回だけ**です（`.metaphor/session.json` の生存 pid を確認する）。
 >
@@ -369,7 +381,8 @@ VSCode でコードを編集しながら、同じ実行中スケッチを AI に
 
 - ビルドの所有者は `watch` 1 つだけなので、ビルドの競合は起きません。
 - AI は `snapshot` でライブビューアと同じ実体を観測し、`build_status` でビルドの成否を確認します。
-- 操作は人間・AI ともにコード編集で行います（共有セッションに AI からの入力注入はありません）。
+- コードの編集は人間・AI ともにファイルを書くだけです（共有セッションに AI からの**入力注入**はありません）。
+- `@Param` の値だけは例外で、`set_param` が共有セッションでも効きます（stdin ではなくファイル契約のため）。人間の GUI スライダーと AI の `set_param` は同一ストアの対称なクライアントで、ライブビューア窓にも即座に反映されます。
 - 共有を無効にするには `metaphor watch --no-probe` で起動します。
 
 ## Development

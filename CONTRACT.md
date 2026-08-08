@@ -199,11 +199,14 @@ consumer がタイムアウトではなく id 一致で失敗を検知できる�
 - **consumer 規約**: 未知のキーは無視する（`frame.json` と同じ additive ルール）。
   キーのリネーム／削除／型変更は破壊的変更で、`schemaVersion` を上げ、両リポジトリの
   本節を同時に更新すること。
-- **実装状況**: producer（metaphor）は実装済み。consumer 側の MCP ツール
-  （`params` = 読み取り / `set_param` = 書き込み → `appliedRequestId` / `revision` の
-  エコー待ち）は `metaphor-cli` の**未実装項目**で、対応 Issue で追跡する。
-  それまでの間も、AI エージェントは 2 ファイルを直接読み書きすれば操作できる
-  （cli 非依存のライブラリ機能である点は Probe と同じ）。
+- **実装状況**: producer（metaphor）・consumer とも実装済み。consumer 側は
+  `metaphor-cli` の MCP ツール `params`（読み取り）/ `set_param`（書き込み →
+  `appliedRequestId` のエコー待ち。全件拒否でも更新されるためタイムアウトを待たない）で、
+  実装は `MCP/ParameterStoreTool.swift`。`set_param` は**ファイル契約なので共有セッション
+  （動作中の `metaphor watch` にアタッチした `metaphor mcp`）でも使える**——子の stdin を
+  watch が所有するために使えない `input` とは、この点で異なる。MCP を介さず、AI
+  エージェントが 2 ファイルを直接読み書きしても同じ操作ができる（cli 非依存の
+  ライブラリ機能である点は Probe と同じ）。
 
 ### AI ドキュメント供給（契約点 6 の補足）
 
