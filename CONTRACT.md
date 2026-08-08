@@ -78,6 +78,14 @@
   `thermalState`（`nominal` / `fair` / `serious` / `critical` / `unknown`）。
   **単一フレーム経路（`current/frame.json`）のみ**で搭載され、連続キャプチャ
   （`sequence/frame.NNNN.json`）・失敗応答・採取不能時はキー省略。
+- `params`（`schemaVersion: 4` のまま additive 追加、Issue #424）= このフレームを
+  生んだ Parameter Store（契約点 7）の値スナップショット。`revision`（ストアの
+  単調増加カウンタ。`params.json` の `revision` と同じ意味）/ `values{}`（パラメータ名 →
+  現在値。型タグの無い裸の JSON）。**型・レンジ・`choices` の正典は `params.json` 側**で、
+  ここは値のスナップショットに徹する（wire を小さく保つ）。`@Param` が 1 つも
+  宣言されていないスケッチではキー省略。**単一フレーム経路と連続キャプチャの両方**に
+  載る（メモリ内の読み取りのみで syscall が無く、シーケンス中に外部が値を変えた
+  フレームを `revision` で切り分けられる）。失敗応答では省略。
 - **consumer 規約**: 未知のキーは無視する。`metaphor-cli` の MCP サーバは
   `frame.json` を **verbatim 透過**するため、additive なフィールド追加では cli の
   コード変更は不要（将来 cli が個別フィールドを解釈し始めたら本表に追記する）。
@@ -183,6 +191,11 @@ consumer がタイムアウトではなく id 一致で失敗を検知できる�
   （型が変わった値は破棄）。`setup()` / `draw()` は最初から復元値を見る。
 - **有効化**: `@Param` が 1 つでも宣言されていれば自動（素の `swift run` でも永続化が効く）。
   オプトアウトは環境変数 `METAPHOR_PARAMS=0`（契約点 2 の env var 群と同じ扱い）。
+- **`frame.json` との関係**: Probe のスナップショット（契約点 4）は `params{revision,values}`
+  を同梱する。**画像とパラメータが 1 回の書き出しで揃う**ため、consumer は
+  「この絵はどの値のときのものか」を 2 ファイルの読み取りタイミングに賭けずに確定できる。
+  `params.json` は宣言情報（型・レンジ・`choices`）と反映確認（`appliedRequestId` /
+  `warnings`）の正典で、`frame.json` 側は値のスナップショットに徹する。
 - **consumer 規約**: 未知のキーは無視する（`frame.json` と同じ additive ルール）。
   キーのリネーム／削除／型変更は破壊的変更で、`schemaVersion` を上げ、両リポジトリの
   本節を同時に更新すること。
