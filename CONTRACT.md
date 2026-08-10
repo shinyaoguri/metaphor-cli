@@ -48,7 +48,8 @@
 | 4 | **Probe ファイル契約**<br>`.metaphor/probe/request.json`（リクエスト）/ `.metaphor/probe/current/frame.{png,json}`（単一フレーム出力）/ `.metaphor/probe/current/sequence/`（連続フレーム出力）と `frame.json` / `sequence.json` スキーマ、`ProbeRequest` のフィールド（`id` / `label` / `scale` / `frames` / `every`） | `metaphor`（`MetaphorProbeConfig.swift` / `ProbeFrameMetadata.swift` / `ProbeSequenceManifest.swift` / `ProbeRequest.swift`） | AI エージェント・ツール（`metaphor-cli` の `snapshot` / `capture_sequence`） |
 | 5 | **Syphon サーバー名 / headless 挙動**<br>`METAPHOR_VIEWER=1` で `METAPHOR_SYPHON_NAME` のサーバーへ publish | `metaphor` headless モード（`SketchRunner.swift`） | `metaphor-cli`（`SyphonFrameSource.swift`） |
 | 6 | **AI ドキュメントのパス/ファイル名**<br>`llms.txt` / `llms-sketch.txt` / `docs/ai/examples-index.{md,json}` | `metaphor` が用意（`llms.txt` / `examples-index` は生成物＝`make llms-txt` / `make examples-index`、`llms-sketch.txt` は**手書き**。いずれもリポジトリにコミット） | `metaphor-cli` の MCP `api_reference` ツール（`MetaphorDocsLocator.swift` / `SketchToolHandler.swift`） |
-| 7 | **Parameter Store ファイル契約**<br>`.metaphor/params/params.json`（現在値 + 宣言情報の出力）/ `.metaphor/params/set-request.json`（外部からの更新要求）と `params.schema.json` / `param-set-request.schema.json`、環境変数 `METAPHOR_PARAMS`（`0` でオプトアウト） | `metaphor`（`Sources/MetaphorCore/Parameters/` の `ParameterPlugin.swift` / `ParameterFile.swift` / `ParameterStore.swift`） | AI エージェント・ツール（`metaphor-cli` の `params` / `set_param` MCP ツールは**未実装**＝Issue で追跡） |
+| 7 | **Parameter Store ファイル契約**<br>`.metaphor/params/params.json`（現在値 + 宣言情報の出力）/ `.metaphor/params/set-request.json`（外部からの更新要求）と `params.schema.json` / `param-set-request.schema.json`、環境変数 `METAPHOR_PARAMS`（`0` でオプトアウト） | `metaphor`（`Sources/MetaphorCore/Parameters/` の `ParameterPlugin.swift` / `ParameterFile.swift` / `ParameterStore.swift`） | AI エージェント・ツール（`metaphor-cli` の `params` / `set_param` MCP ツール = `MCP/ParameterStoreTool.swift`） |
+| 8 | **状態保持リロードのファイル契約**<br>`.metaphor/state/state.json`（保存された状態）/ `.metaphor/state/save-request.json`（外部からの保存要求）と `state.schema.json` / `state-save-request.schema.json`、環境変数 `METAPHOR_STATE`（`1` で明示有効・`0` でオプトアウト）/ `METAPHOR_RESTORE_STATE`（復元元のパス） | `metaphor`（`Sources/MetaphorCore/State/` の `StatePlugin.swift` / `SketchStateFile.swift`） | `metaphor-cli` の watch（リビルド時の保存 → 再起動時の注入） |
 
 ### `frame.json` スキーマのバージョニング（契約点 4 の補足）
 
@@ -95,10 +96,11 @@
 ### wire スキーマの正典（契約点 4 の補足）
 
 `request.json` / `frame.json` / `sequence.json`（契約点 4）と `params.json` /
-`set-request.json`（契約点 7）の **wire 形式（JSON の構造・キー・値域・
+`set-request.json`（契約点 7）、`state.json` / `save-request.json`（契約点 8）の
+**wire 形式（JSON の構造・キー・値域・
 enum・`schemaVersion`）の正典は `contract/*.schema.json`**（JSON Schema draft 2020-12、
 両リポジトリに同一内容で置く）。Swift 実装（`Sources/MetaphorCore/Probe/` /
-`Sources/MetaphorCore/Parameters/`）が意味の正典で、
+`Sources/MetaphorCore/Parameters/` / `Sources/MetaphorCore/State/`）が意味の正典で、
 スキーマはそれを機械可読に写したもの。設計判断は [docs/adr/0004-wire-schema-canon-vs-shared-types.md](docs/adr/0004-wire-schema-canon-vs-shared-types.md)
 （Issue #119 案D 不採用・案C+ 採用）と [docs/design/external-coupling-and-contract.md](docs/design/external-coupling-and-contract.md)。
 
@@ -208,6 +210,50 @@ consumer がタイムアウトではなく id 一致で失敗を検知できる�
   エージェントが 2 ファイルを直接読み書きしても同じ操作ができる（cli 非依存の
   ライブラリ機能である点は Probe と同じ）。
 
+### 状態保持リロード `.metaphor/state/`（契約点 8）
+
+`metaphor watch` は再ビルドのたびに子プロセスを作り直すため、既定では `draw()` が積み上げた
+状態（パーティクル・シミュレーション）と時計（`frameCount` / `time`）が毎回ゼロに戻ります。
+本契約はその 2 つを**次のプロセスへ運ぶ**ためのもので、Probe（契約点 4）・Parameter Store
+（契約点 7）と同じ流儀——アトミック書込・mtime ポーリング・`id` エコー・
+`contract/*.schema.json` が wire 形式の正典——を `.metaphor/` 配下の別ファセットとして
+再利用します（新しい RPC は作らない）。パラメータ（`@Param`）は契約点 7 が単独で
+リロードを生存するため、本契約が運ぶのは**それ以外の状態と時計**です。
+
+- **`save-request.json`（consumer = `metaphor watch` が書く）**: `{id}`。**アトミックに書く**
+  こと（`save-request.json.tmp` → rename）。**`id` はリクエストごとに必ず変える**
+  （producer は同一 id を再処理しない）。producer は次フレームの `pre()` で読む。
+- **`state.json`（producer = スケッチが唯一の書き手）**: `schemaVersion`（現行 = 1）/
+  `savedRequestId?`（応答した save-request の `id` エコー）/ `runtime{frameCount,elapsedSeconds}`
+  （metaphor 自身が復元する時計）/ `user?{encoding,data}`（`Sketch.saveState()` が返した
+  ペイロード。現行 `encoding` は `base64` のみ）。書き出しは `state.json.tmp` → rename の
+  **アトミック書込**で、`params.json` と違い**同期**（consumer はこのファイルを見てから子を
+  kill するため、書き出し完了がそのままリロードの待ち時間になる）。
+- **`user` 節は意図的に opaque**: エンベロープだけがスキーマ管理の対象で、`data` の中身は
+  スケッチ作者のものです。consumer は解釈せず運ぶだけ（型を知る必要がない = cli を
+  スケッチのデータモデルから独立に保つ）。
+- **消費シーケンス（consumer 側）**: リビルド成功 → `save-request.json` を書く →
+  `state.json` の `savedRequestId` が送った `id` と一致するまでポーリング（**タイムアウト
+  ~250ms**）→ 子を kill → 新しい子を `METAPHOR_RESTORE_STATE=<state.json の絶対パス>`
+  付きで起動。タイムアウト・ファイル無しは**状態なしで通常起動**（開発ツールがリロードを
+  止めない）。
+- **復元（producer 側）**: `METAPHOR_RESTORE_STATE` があれば起動時に読み、`setup()` の**後**に
+  `Sketch.restoreState(_:)` へ `user` ペイロードを渡す。`runtime`（時計）の復元は
+  `SketchConfig.preserveClock = true` のときだけ行う（既定 `false` = オプトイン。時刻が
+  外部の都合で飛ぶことを前提にしないスケッチを驚かせないため）。**デコード失敗・欠損・
+  未知の `encoding` はすべて黙って初期状態へフォールバック**する（`METAPHOR_DEBUG=1` の
+  ときだけ stderr に理由を出す）。
+- **有効化**: ヘッドレス（`METAPHOR_VIEWER=1` = watch の子プロセス）で自動。素の
+  `swift run` で試すときは `METAPHOR_STATE=1`、オプトアウトは `METAPHOR_STATE=0`。
+  リクエストが無いフレームのコストは save-request の `stat()` 1 回（契約点 4/7 と同じ
+  性能契約）。**consumer 側の規約**: `metaphor watch` は子へ `METAPHOR_STATE=1` を
+  明示注入する（`--no-viewer` でも状態が運ばれるように。ユーザーが環境で
+  `METAPHOR_STATE` を設定していればそれを尊重する）。また、**保存要求が一度も
+  応答されなかった watch セッションでは以降の要求を止める** — 状態保持を使っていない
+  スケッチでリロードのたびにタイムアウトぶん待たないため。
+- **consumer 規約**: 未知のキーは無視する（additive ルール）。キーのリネーム／削除／
+  型変更は破壊的変更で、`schemaVersion` を上げ、両リポジトリの本節を同時に更新すること。
+
 ### AI ドキュメント供給（契約点 6 の補足）
 
 `metaphor new` で生成したスケッチは、`metaphor mcp` の `api_reference` ツールを通じて
@@ -272,6 +318,7 @@ pin 形式・AI ドキュメントのパス/ファイル名）を変更・追加
 - `Sources/MetaphorCore/Input/InputInjectionPlugin.swift` — stdin JSON Lines 解析
 - `Sources/MetaphorCore/Probe/MetaphorProbeConfig.swift` / `ProbeFrameMetadata.swift` / `ProbeRequest.swift` / `ProbeSequenceManifest.swift` — Probe 契約（単一フレーム + 連続フレーム）
 - `Sources/MetaphorCore/Parameters/ParameterPlugin.swift` / `ParameterFile.swift` / `ParameterStore.swift` / `Param.swift` — Parameter Store 契約（契約点 7。`.metaphor/params/` のパス・`METAPHOR_PARAMS`・wire 形式）
+- `Sources/MetaphorCore/State/StatePlugin.swift` / `SketchStateFile.swift` / `Sketch+State.swift` — 状態保持リロード契約（契約点 8。`.metaphor/state/` のパス・`METAPHOR_STATE` / `METAPHOR_RESTORE_STATE`・wire 形式）
 - `llms.txt` / `docs/ai/examples-index.{md,json}`（生成物）・`llms-sketch.txt`（手書き）— AI ドキュメント（契約点 6）
 - `.github/workflows/release.yml` — Syphon ビルド・Release・cli への dispatch
 

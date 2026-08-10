@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shinyaoguri/metaphor/contract/state-save-request.schema.json",
+  "title": "State preservation save-request.json",
+  "description": "Consumer (metaphor watch、または任意のツール) が .metaphor/state/save-request.json へアトミックに (.tmp → rename) 書き込む状態保存要求。Producer は次フレームの pre() で読み、Sketch.saveState() を呼んで state.json を書き出し、id をエコーする。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id"],
+  "properties": {
+    "id": {
+      "description": "リクエストの一意な識別子。リクエストごとに必ず変える (producer は同一 id を再処理しない)。処理されると state.json の savedRequestId にエコーされる。",
+      "type": "string"
+    }
+  }
+}

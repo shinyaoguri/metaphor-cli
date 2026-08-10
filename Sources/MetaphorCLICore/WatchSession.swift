@@ -92,6 +92,13 @@ public final class WatchSession {
     /// 解決済みの実行ファイルパス（初回解決後にキャッシュ）。
     private var resolvedBinary: String?
 
+    /// リロードをまたいで子の状態を運ぶ受け渡し役（CONTRACT.md 契約点 8）。
+    private let stateHandoff: StateHandoff
+
+    /// 直前の保存要求が無応答だったら、以降のリロードでは要求しない。
+    /// 状態保持を使っていないスケッチで毎回タイムアウトぶんの遅延を払わないため。
+    private var stateHandoffDisabled = false
+
     /// 子スケッチを（再）起動したときに呼ばれる。ビューアが Syphon サーバーの
     /// 差し替え（同名・別 UUID）に追従するための通知に使う。バックグラウンドキューから
     /// 呼ばれうるので、受け手はメインスレッドへホップすること。
@@ -118,7 +125,8 @@ public final class WatchSession {
         binaryResolver: (any SketchBinaryResolving)? = nil,
         extraEnvironment: [String: String]? = nil,
         captureBuildOutput: Bool = false,
-        shareSession: Bool = false
+        shareSession: Bool = false,
+        stateHandoff: StateHandoff? = nil
     ) {
         self.directory = directory
         self.swiftArguments = swiftArguments
@@ -130,6 +138,7 @@ public final class WatchSession {
         // 黙らせず一度だけ通知する。テストはカスタム解決器を注入できる。
         self.binaryResolver = binaryResolver ?? SwiftPMBinaryResolver(console: console)
         self.extraEnvironment = extraEnvironment
+        self.stateHandoff = stateHandoff ?? StateHandoff(sketchDirectory: directory)
         // 共有セッションでは build-status.json にエラー文も載せたいので捕捉を強制する。
         self.captureBuildOutput = captureBuildOutput || shareSession
         self.shareSession = shareSession
@@ -283,6 +292,19 @@ public final class WatchSession {
         Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
     }
 
+    /// 動作中の子へ状態の保存を要求し、次の子へ渡す `state.json` のパスを返す。
+    ///
+    /// 子が居ない初回起動や、無応答だった後（状態保持を使っていないスケッチ）は
+    /// 何もしない。
+    private func captureStateForHandoff() -> String? {
+        guard current != nil, !stateHandoffDisabled else { return nil }
+        guard let path = stateHandoff.captureState() else {
+            stateHandoffDisabled = true
+            return nil
+        }
+        return path
+    }
+
     /// ビルドが通った場合のみ、前のスケッチを終了して新しく起動する。
     /// ビルド失敗時は動作中のスケッチを維持する（壊れた編集で窓を消さない）。
     private func rebuildAndLaunch(initial: Bool, detectMs: Double? = nil) {
@@ -319,6 +341,9 @@ public final class WatchSession {
         }
 
         let relaunchStart = DispatchTime.now()
+        // 子を kill する前に状態のスナップショットを取る（契約点 8）。応答が無ければ
+        // 状態なしで進む — 引き継ぎは付加価値で、リロードを止める理由にはならない。
+        let restoreStatePath = captureStateForHandoff()
         current?.terminate()
         current = nil
 
@@ -343,6 +368,16 @@ public final class WatchSession {
         // 測定ハーネスが「観測フレームが今の編集を反映しているか」を機械判定できる。
         var childEnvironment = extraEnvironment ?? [:]
         childEnvironment["METAPHOR_SOURCE_STAMP"] = computeSourceStamp()
+        // watch の子では状態保持プラグインを有効にする（--viewer でないときも運べる
+        // ように明示注入する）。ユーザーが環境で切っていればそれを尊重する。
+        if childEnvironment["METAPHOR_STATE"] == nil,
+           ProcessInfo.processInfo.environment["METAPHOR_STATE"] == nil {
+            childEnvironment["METAPHOR_STATE"] = "1"
+        }
+        // 直前の子が状態を残していれば、その読み戻し先を渡す。
+        childEnvironment = stateHandoff.environment(
+            base: childEnvironment, statePath: restoreStatePath
+        )
 
         do {
             current = try launcher.launch(
