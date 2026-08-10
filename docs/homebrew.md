@@ -127,6 +127,10 @@ python3 scripts/audit-release-pipeline.py --dry-run
 | 3 | `release:patch` ラベルで metaphor-cli のリリースが出る | `release-on-merge.yml` → `release.yml` |
 | 4 | tap へ Formula PR → bottle 込みで main へ | `release.yml` → homebrew-tap `publish.yml` |
 
+段 2→3 を繋ぐ `release:patch` ラベル(`chore:` タイトル単独では `release-on-merge.yml`
+が発火しない)は `scripts/check-contract.sh` が機械検査します(#117)。ラベルが消える・
+改名される変更は、この監査を待たず PR の CI で止まります。
+
 ## Tap Credentials (GitHub App)
 
 Actions が自動発行する `GITHUB_TOKEN` は発行元のリポジトリにしかスコープされず、

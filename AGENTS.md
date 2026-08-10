@@ -73,7 +73,9 @@ gh pr create --base main --title "feat: ..." --label release:skip   # 自動リ�
 v1.0 到達は必ず `release:major` ラベルで明示する。prerelease は Release workflow の
 `workflow_dispatch` で手動。連続マージ時は release.yml の concurrency が直列化し、
 待機中の重複リリースは最新 1 本にまとまる。Syphon pin の自動 bump PR は
-`release:patch` ラベル付きで作られ、マージで pin がユーザーへ届く。
+`release:patch` ラベル付きで作られ、マージで pin がユーザーへ届く。このラベル結合
+（`syphon-bump.yml` が貼り、`release-on-merge.yml` が読む）は
+`scripts/check-contract.sh` が機械検査する（#117）。
 
 上流 metaphor からのリリース連鎖（dispatch 受信 → pin bump → 本リポのリリース →
 homebrew-tap への Formula 反映）の全体地図は
