@@ -75,6 +75,10 @@ v1.0 到達は必ず `release:major` ラベルで明示する。prerelease は R
 待機中の重複リリースは最新 1 本にまとまる。Syphon pin の自動 bump PR は
 `release:patch` ラベル付きで作られ、マージで pin がユーザーへ届く。
 
+上流 metaphor からのリリース連鎖（dispatch 受信 → pin bump → 本リポのリリース →
+homebrew-tap への Formula 反映）の全体地図は
+[metaphor の docs/release-pipeline.md](https://github.com/shinyaoguri/metaphor/blob/main/docs/release-pipeline.md)。
+
 ## 気付きは Issue へ
 
 本プロジェクトはまだ問題が残っている前提で開発している。作業中に本題以外のバグ・ドキュメント不備・改善アイデアに気付いたら、**その場で直そうとせず、気軽に `gh issue create` で Issue を立てること**（重複がないか `gh issue list --search` で軽く確認）。小さな気付きの起票も歓迎で、確信が持てないものは「提案」として立ててよい。ライブラリ側（描画・API）の事象なら `shinyaoguri/metaphor` に、両リポに跨るもの（CONTRACT.md・Probe wire format・環境変数）は両方に立てて相互リンクする。
