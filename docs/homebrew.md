@@ -84,14 +84,16 @@ Actions が自動発行する `GITHUB_TOKEN` は `metaphor-cli` にしかスコ�
 
 ### 初回セットアップ（一度だけ）
 
-この App は tap への push 専用ではなく、**このリポジトリの自動化全般**に使います
-（もう 1 つの用途は `syphon-bump.yml` が開く Syphon pin bump PR。GITHUB_TOKEN で
-PR を作ると CI が発火せず署名も付かないため、同じ App のトークンで作っています。
-詳細は [DEVELOPMENT.md](../DEVELOPMENT.md) の Syphon pin bump の節）。secret 名が
-`REPO_AUTOMATION_APP_*` と中立なのはそのためです。
+現在使っているのは **`metaphor-tap-publisher`** です。名前は tap 専用に見えますが、
+**このリポジトリの自動化全般**に使います（もう 1 つの用途は `syphon-bump.yml` が開く
+Syphon pin bump PR。GITHUB_TOKEN で PR を作ると CI が発火せず署名も付かないため、
+同じ App のトークンで作っています。詳細は [DEVELOPMENT.md](../DEVELOPMENT.md) の
+Syphon pin bump の節）。App 名は歴史的経緯でそのままですが、secret 名を
+`REPO_AUTOMATION_APP_*` と中立にしてあるのは用途がこの 2 つに広がっているためです。
+**新しい App を作る必要はありません** — 以下は作り直すときの手順です。
 
 1. GitHub の Settings → Developer settings → **GitHub Apps** → New GitHub App
-   - GitHub App name: 任意（例 `metaphor-repo-automation`）
+   - GitHub App name: 任意（既存は `metaphor-tap-publisher`）
    - Homepage URL: 任意（リポジトリ URL でよい）
    - **Webhook: Active のチェックを外す**（不要）
    - Repository permissions:
