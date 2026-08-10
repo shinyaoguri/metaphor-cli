@@ -76,10 +76,27 @@ jobs:
           echo "--- Package.swift (Syphon pin) ---"
           grep -nE "releases/download|checksum:" Package.swift
 
+      # GITHUB_TOKEN で PR を作ると main の保護を 2 つとも満たせない:
+      #   - 再帰防止仕様で `pull_request` CI が発火せず required check が揃わない
+      #   - ローカル git commit のままなので required_signatures を満たさない
+      # GitHub App のインストールトークンで作ると前者が解消し、`sign-commits: true`
+      # (API 経由の commit = GitHub が署名) で後者が解消する。App は release.yml が
+      # tap への push に使うものと同一で、metaphor-cli 自身にもインストールしてある
+      # (Contents: write / Pull requests: write)。
+      - name: Mint app token
+        id: app-token
+        if: steps.resolve.outputs.skip != 'true'
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.HOMEBREW_TAP_APP_CLIENT_ID }}
+          private-key: ${{ secrets.HOMEBREW_TAP_APP_PRIVATE_KEY }}
+
       - name: Open pull request
         if: steps.resolve.outputs.skip != 'true'
         uses: peter-evans/create-pull-request@v8
         with:
+          token: ${{ steps.app-token.outputs.token }}
+          sign-commits: true
           branch: chore/bump-syphon-${{ steps.resolve.outputs.tag }}
           base: main
           title: "chore: bump Syphon.xcframework pin to ${{ steps.resolve.outputs.tag }}"
