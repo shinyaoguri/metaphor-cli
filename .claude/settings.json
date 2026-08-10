@@ -30,31 +30,5 @@
       "Bash(gh release list:*)",
       "Bash(gh release view:*)"
     ]
-  },
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/ci-watch-mark.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/ci-watch-stop.sh",
-            "timeout": 30,
-            "statusMessage": "Checking CI on the pushed PR"
-          }
-        ]
-      }
-    ]
   }
 }

@@ -21,20 +21,11 @@ GitHub Release からピン留め取得、checksum 検証あり）。
 
 ### CI が赤いまま終わらせない（Stop hook）
 
-push しっぱなしで CI の赤に気付かないのを防ぐため、Claude Code のセッションには**赤い CI を残して終われない**仕掛けを入れています（`.claude/settings.json` + `.claude/hooks/`。`shinyaoguri/metaphor` にも同じものがあります）。
+push しっぱなしで CI の赤に気付かないのを防ぐため、Claude Code のセッションが**赤い CI を残して終われない**ようにしています。`git push` を見たら見届け対象の印を置き、セッションを終えようとしたときに PR のチェック状況を見て、実行中なら見届けを促し、赤なら失敗ジョブ名とログ取得コマンドを添えて差し戻す Stop hook です（対象は自分の PR ブランチだけ。自動修正は 3 回・待機は 6 回で打ち切り、以降は人間の判断に返します）。
 
-| フック | 役割 |
-|---|---|
-| `ci-watch-mark.sh`（PostToolUse / Bash） | `git push` を見たら「この PR の CI を見届ける」印を `.git/claude-ci-watch/<session>` に置く。push していないセッションでは何もしない |
-| `ci-watch-stop.sh`（Stop） | 印があるときだけ `gh pr view` でチェック状況を見る。**実行中**なら見届けを促し、**赤**なら失敗ジョブ名・ログ取得コマンドを添えて差し戻す。green / マージ済み / bot の PR / PR 無しなら印を消して黙る |
+この仕掛けは**このリポジトリには同梱していません**。守る対象がリポジトリの構成ではなく Claude の振る舞いなので、開発者個人の Claude 環境（[shinyaoguri/claude-plugins](https://github.com/shinyaoguri/claude-plugins) の `repo-standards` プラグイン）が全プロジェクト向けに供給しています（経緯は同リポの [ADR 0016](https://github.com/shinyaoguri/claude-plugins/blob/main/docs/decisions/0016-agent-behavior-hooks-in-plugin.md)）。外部のコントリビュータの手元では動かないので、このリポジトリのセットアップとしては何も要りません。
 
-- 対象は**自分の PR ブランチだけ**（`main` と、Syphon pin bump や dependabot の PR は対象外）。
-- **自動修正は 3 回・待機は 6 回**で打ち切り、以降はその PR について黙ります（人間の判断へ返す）。
-- 差し戻しの指示には「テストを削る・skip する・アサーションを緩める対処はしない」「無関係な既存の赤や flaky なら直さず報告してよい」を明記しています。
-
-```bash
-.claude/hooks/tests/ci-watch-test.sh   # 使い捨ての git リポと gh スタブで全分岐を検証
-```
+差し戻されたときの直し方は通常のローカル検証と同じで、`make test`（契約に触れたなら `make contract` も）を通してから追加コミットしてください。
 
 ## Project Structure
 
