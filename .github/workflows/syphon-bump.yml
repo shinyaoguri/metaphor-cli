@@ -81,15 +81,17 @@ jobs:
       #   - ローカル git commit のままなので required_signatures を満たさない
       # GitHub App のインストールトークンで作ると前者が解消し、`sign-commits: true`
       # (API 経由の commit = GitHub が署名) で後者が解消する。App は release.yml が
-      # tap への push に使うものと同一で、metaphor-cli 自身にもインストールしてある
-      # (Contents: write / Pull requests: write)。
+      # tap への push に使うものと同一 (docs/homebrew.md にセットアップ手順)。
+      # このリポジトリにも Contents: write / Pull requests: write で install が要る。
       - name: Mint app token
         id: app-token
         if: steps.resolve.outputs.skip != 'true'
         uses: actions/create-github-app-token@v3
         with:
-          client-id: ${{ secrets.HOMEBREW_TAP_APP_CLIENT_ID }}
-          private-key: ${{ secrets.HOMEBREW_TAP_APP_PRIVATE_KEY }}
+          client-id: ${{ secrets.REPO_AUTOMATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.REPO_AUTOMATION_APP_PRIVATE_KEY }}
+          owner: shinyaoguri
+          repositories: metaphor-cli
 
       - name: Open pull request
         if: steps.resolve.outputs.skip != 'true'

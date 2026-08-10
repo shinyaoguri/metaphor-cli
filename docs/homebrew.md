@@ -84,12 +84,22 @@ Actions が自動発行する `GITHUB_TOKEN` は `metaphor-cli` にしかスコ�
 
 ### 初回セットアップ（一度だけ）
 
+現在使っているのは **`metaphor-tap-publisher`** です。名前は tap 専用に見えますが、
+**このリポジトリの自動化全般**に使います（もう 1 つの用途は `syphon-bump.yml` が開く
+Syphon pin bump PR。GITHUB_TOKEN で PR を作ると CI が発火せず署名も付かないため、
+同じ App のトークンで作っています。詳細は [DEVELOPMENT.md](../DEVELOPMENT.md) の
+Syphon pin bump の節）。App 名は歴史的経緯でそのままですが、secret 名を
+`REPO_AUTOMATION_APP_*` と中立にしてあるのは用途がこの 2 つに広がっているためです。
+**新しい App を作る必要はありません** — 以下は作り直すときの手順です。
+
 1. GitHub の Settings → Developer settings → **GitHub Apps** → New GitHub App
-   - GitHub App name: 任意（例 `metaphor-tap-publisher`）
+   - GitHub App name: 任意（既存は `metaphor-tap-publisher`）
    - Homepage URL: 任意（リポジトリ URL でよい）
    - **Webhook: Active のチェックを外す**（不要）
-   - Repository permissions: **Contents: Read and write** のみ
-     （Metadata: Read-only は自動付与）
+   - Repository permissions:
+     - **Contents: Read and write** — tap への push と bump PR のブランチ作成
+     - **Pull requests: Read and write** — bump PR の作成
+     - （Metadata: Read-only は自動付与）
    - Where can this GitHub App be installed?: Only on this account
 2. 作成後の General 画面で **Client ID**（`Iv23li...` 形式）を控える。
    すぐ上にある App ID とは別の値なので取り違えないこと。
@@ -97,11 +107,12 @@ Actions が自動発行する `GITHUB_TOKEN` は `metaphor-cli` にしかスコ�
    ダウンロードする（再ダウンロード不可。紛失したら再生成する）。
 4. 左メニュー Install App → 自分のアカウントに install。
    Repository access は **Only select repositories** →
-   `shinyaoguri/homebrew-tap` のみを選ぶ。
+   `shinyaoguri/homebrew-tap` と `shinyaoguri/metaphor-cli` の **2 つ**を選ぶ。
+   （tap だけだと bump PR の作成が `Mint app token` step で失敗します）
 5. `metaphor-cli` repo の Settings → Secrets and variables → Actions →
    New repository secret で 2 つ登録する。
-   - `HOMEBREW_TAP_APP_CLIENT_ID` — 手順 2 の Client ID
-   - `HOMEBREW_TAP_APP_PRIVATE_KEY` — 手順 3 の `.pem` の**中身全体**
+   - `REPO_AUTOMATION_APP_CLIENT_ID` — 手順 2 の Client ID
+   - `REPO_AUTOMATION_APP_PRIVATE_KEY` — 手順 3 の `.pem` の**中身全体**
      （`-----BEGIN...` から `-----END...` まで、改行を含めてそのまま貼る）
 
    Client ID 自体は秘密ではありませんが、private key と対で扱うほうが
@@ -109,17 +120,19 @@ Actions が自動発行する `GITHUB_TOKEN` は `metaphor-cli` にしかスコ�
 
 Release workflow の `Mint homebrew-tap token` step
 (`actions/create-github-app-token`) がこの 2 つからトークンを発行し、
-続く `Checkout homebrew-tap` に渡します。
+続く `Checkout homebrew-tap` に渡します。トークンは step ごとに
+`repositories:` で必要なリポジトリだけに絞っています。
 
 ### 運用
 
 期限切れによる rotate は不要です。private key を差し替えたいときは、App の
-画面で新しい key を生成して `HOMEBREW_TAP_APP_PRIVATE_KEY` を上書きし、
+画面で新しい key を生成して `REPO_AUTOMATION_APP_PRIVATE_KEY` を上書きし、
 古い key を App 側から削除します。
 
-tap への push が `Bad credentials` や 403 で落ちるときは、App が
-`homebrew-tap` に install されているか、その install の Repository access に
-`homebrew-tap` が含まれているかを確認してください。
+`Bad credentials` や 403 で落ちるときは、App の install の Repository access に
+対象リポジトリが含まれているかを確認してください（tap への push なら
+`homebrew-tap`、Syphon pin bump PR の作成なら `metaphor-cli`）。
+**この install 範囲を絞ると tap だけでなく bump PR も止まります。**
 
 ## Update Behavior
 

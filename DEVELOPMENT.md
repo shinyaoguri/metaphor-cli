@@ -227,10 +227,12 @@ GitHub Actions API 経由で作成されます(= GitHub が署名)。これは m
 - **required_signatures** — ローカル git commit のままでは未署名になりマージがブロックされる。
   API 経由の commit なら verified になる
 
-App は `release.yml` が homebrew-tap への push に使うものと同一(secret も
-`HOMEBREW_TAP_APP_CLIENT_ID` / `HOMEBREW_TAP_APP_PRIVATE_KEY` を共用)で、metaphor-cli 自身にも
-Contents: write / Pull requests: write でインストールしてあります。**App のインストールが外れると
-bump PR は再び CI 未発火 + 未署名に戻る**ので、その場合はまずインストール状態を確認してください。
+App は `release.yml` が homebrew-tap への push に使うものと同一で、secret も
+`REPO_AUTOMATION_APP_CLIENT_ID` / `REPO_AUTOMATION_APP_PRIVATE_KEY` を共用します
+(セットアップ手順は [docs/homebrew.md](docs/homebrew.md))。**この App の install 対象に
+`metaphor-cli` が含まれていないと `Mint app token` step で失敗し、含まれていても権限が
+Contents: write / Pull requests: write に満たなければ PR 作成で失敗します。**
+bump PR が作られない / 再び CI 未発火 + 未署名に戻ったときは、まず install 状態を確認してください。
 
 暫定対処(過去の手順): 未署名・CI 未発火の bot PR が残っている場合、close → reopen で
 自分のアカウント起点の reopened イベントにすると CI は走りますが、**署名は付かないため
