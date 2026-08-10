@@ -19,6 +19,23 @@ make install              # release ビルドを ~/.local に導入（Syphon.fra
 対象は macOS 14.0+ / Swift 5.10+。外部依存は Syphon.xcframework のみ（`Package.swift` で
 GitHub Release からピン留め取得、checksum 検証あり）。
 
+### CI が赤いまま終わらせない（Stop hook）
+
+push しっぱなしで CI の赤に気付かないのを防ぐため、Claude Code のセッションには**赤い CI を残して終われない**仕掛けを入れています（`.claude/settings.json` + `.claude/hooks/`。`shinyaoguri/metaphor` にも同じものがあります）。
+
+| フック | 役割 |
+|---|---|
+| `ci-watch-mark.sh`（PostToolUse / Bash） | `git push` を見たら「この PR の CI を見届ける」印を `.git/claude-ci-watch/<session>` に置く。push していないセッションでは何もしない |
+| `ci-watch-stop.sh`（Stop） | 印があるときだけ `gh pr view` でチェック状況を見る。**実行中**なら見届けを促し、**赤**なら失敗ジョブ名・ログ取得コマンドを添えて差し戻す。green / マージ済み / bot の PR / PR 無しなら印を消して黙る |
+
+- 対象は**自分の PR ブランチだけ**（`main` と、Syphon pin bump や dependabot の PR は対象外）。
+- **自動修正は 3 回・待機は 6 回**で打ち切り、以降はその PR について黙ります（人間の判断へ返す）。
+- 差し戻しの指示には「テストを削る・skip する・アサーションを緩める対処はしない」「無関係な既存の赤や flaky なら直さず報告してよい」を明記しています。
+
+```bash
+.claude/hooks/tests/ci-watch-test.sh   # 使い捨ての git リポと gh スタブで全分岐を検証
+```
+
 ## Project Structure
 
 3 つのモジュールに分かれています（`Package.swift` 参照）。
