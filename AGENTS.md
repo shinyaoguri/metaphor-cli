@@ -50,7 +50,7 @@ CI は `scripts/check-contract.sh` で契約トークンの消失を検知する
 
 - **`main`** — 唯一の長命ブランチ（デフォルト）。すべての PR は main 宛。保護: PR必須・`build-and-test` 必須・**直push禁止**・squashのみ。
 - feature ブランチは main から切り、マージ後自動削除。
-- **赤い CI を残したままセッションを終えない**。push した PR の CI は Stop hook（`.claude/hooks/ci-watch-stop.sh`）が見張り、赤いまま終わろうとすると失敗ジョブとログ取得コマンドを添えて差し戻してくる。そのまま原因を直して追加コミットする（自動修正は 3 回で打ち切り、それ以降は状況を報告して人間に返す）。仕組みは [DEVELOPMENT.md](DEVELOPMENT.md) の「CI が赤いまま終わらせない（Stop hook）」。
+- **赤い CI を残したままセッションを終えない**。push した PR の CI は Stop hook（個人環境の `repo-standards` プラグインが供給。このリポには同梱していない）が見張り、赤いまま終わろうとすると失敗ジョブとログ取得コマンドを添えて差し戻してくる。そのまま原因を直して追加コミットする（自動修正は 3 回で打ち切り、それ以降は状況を報告して人間に返す）。仕組みは [DEVELOPMENT.md](DEVELOPMENT.md) の「CI が赤いまま終わらせない（Stop hook）」。
 
 ### リリース手順（マージで自動）
 
