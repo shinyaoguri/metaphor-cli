@@ -69,6 +69,9 @@ public struct MCPCommand {
             handler = SketchToolHandler(
                 snapshotTool: ProbeSnapshotTool(sketchDirectory: directory),
                 sequenceTool: ProbeSequenceTool(sketchDirectory: directory),
+                // params / set_param はファイル契約なので、子の stdin を watch が
+                // 所有していても使える（input と違って共有セッションでも有効）。
+                parameterStoreTool: ParameterStoreTool(sketchDirectory: directory),
                 forwardInput: { _ in },   // 共有セッションでは AI 入力注入は対象外（操作はコード編集）
                 buildStatusProvider: { SharedSession.readBuildStatus(for: directory) },
                 inputAvailable: false,
@@ -110,6 +113,7 @@ public struct MCPCommand {
             handler = SketchToolHandler(
                 snapshotTool: ProbeSnapshotTool(sketchDirectory: directory),
                 sequenceTool: ProbeSequenceTool(sketchDirectory: directory),
+                parameterStoreTool: ParameterStoreTool(sketchDirectory: directory),
                 forwardInput: { [weak session] line in session?.forwardInput(line) },
                 buildStatusProvider: { [weak session] in session?.lastBuildOutcome },
                 docsRootProvider: docsRootProvider
@@ -166,6 +170,8 @@ public struct MCPCommand {
       snapshot          現在フレームの PNG と内部状態(frame.json)を返す
       capture_sequence  連続フレーム列(時間軸)の contact sheet と manifest を返す
       input             マウス/キー入力を動作中のスケッチへ送る
+      params            @Param で宣言されたパラメータの現在値・レンジを返す
+      set_param         パラメータ値を再ビルドなしで書き換える
       build_status      直近の `swift build` の成否・エラーを返す
       api_reference     依存先 metaphor の API ドキュメント(llms.txt 等)を返す
 

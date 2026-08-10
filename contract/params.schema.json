@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shinyaoguri/metaphor/contract/params.schema.json",
+  "title": "Parameter Store params.json",
+  "description": "Producer (metaphor のスケッチ = ParameterPlugin) が .metaphor/params/params.json へアトミックに書き出す、@Param で宣言されたパラメータの現在値と宣言情報。唯一の書き手はスケッチ本体で、外部 (GUI / AI エージェント) は読み取り + set-request.json 経由の書き込みを行う。Swift 型 ParameterFile (Sources/MetaphorCore/Parameters/ParameterFile.swift) が意味の正典。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "revision", "warnings", "params"],
+  "properties": {
+    "schemaVersion": {
+      "description": "現行 = 1。additive 変更では上げず、キーのリネーム/削除/型変更でのみ上げる。",
+      "const": 1
+    },
+    "revision": {
+      "description": "値が変わるたびに増える単調カウンタ。外部は set-request の反映を appliedRequestId と併せて確認する。プロセス起動時にも 1 つ進む (宣言そのものが変わり得るため)。",
+      "type": "integer",
+      "minimum": 0
+    },
+    "appliedRequestId": {
+      "description": "最後に処理した set-request.json の id のエコー。まだ 1 度も処理していなければ省略。",
+      "type": "string"
+    },
+    "warnings": {
+      "description": "直近の set-request で拒否された項目の理由 (未知の名前・型不一致・choices 外)。拒否が無ければ空配列。",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "params": {
+      "description": "宣言順のパラメータ一覧。並び順はスケッチのプロパティ宣言順で決定的。",
+      "type": "array",
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "value"],
+      "properties": {
+        "name": {
+          "description": "ストア内の一意な名前。既定はプロパティ名 (@Param var radius → \"radius\")。",
+          "type": "string"
+        },
+        "type": {
+          "description": "型タグ。value の JSON 形状はこれで決まる (vec2/vec3/color は裸の配列)。",
+          "enum": ["float", "int", "bool", "string", "color", "vec2", "vec3"]
+        },
+        "value": {
+          "description": "現在値。形状は type に従う (下の allOf で強制)。"
+        },
+        "min": {
+          "description": "下限。外部からの書き込みはこの範囲へクランプされる (数値型のみ)。",
+          "type": "number"
+        },
+        "max": {
+          "description": "上限。同上。",
+          "type": "number"
+        },
+        "choices": {
+          "description": "string 型の合法値。範囲外の書き込みは拒否され warnings に載る。",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "float" } }, "required": ["type"] },
+          "then": { "properties": { "value": { "type": "number" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "int" } }, "required": ["type"] },
+          "then": { "properties": { "value": { "type": "integer" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "bool" } }, "required": ["type"] },
+          "then": { "properties": { "value": { "type": "boolean" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "string" } }, "required": ["type"] },
+          "then": { "properties": { "value": { "type": "string" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "color" } }, "required": ["type"] },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "array",
+                "items": { "type": "number" },
+                "minItems": 4,
+                "maxItems": 4
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "vec2" } }, "required": ["type"] },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "array",
+                "items": { "type": "number" },
+                "minItems": 2,
+                "maxItems": 2
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "vec3" } }, "required": ["type"] },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "array",
+                "items": { "type": "number" },
+                "minItems": 3,
+                "maxItems": 3
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
