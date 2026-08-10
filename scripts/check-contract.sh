@@ -144,6 +144,15 @@ case "$REPO" in
     # Syphon Release dispatch event_type received from metaphor (auto-bump, L2a).
     check ".github/workflows/syphon-bump.yml" \
       "syphon-release"
+    # Release-chain stage 2 -> 3 coupling: the bump PR's `chore:` title alone never
+    # releases — the release:patch label is the single thread that turns a merged pin
+    # bump into a cli release. The labeler (syphon-bump.yml) and the reader
+    # (release-on-merge.yml) must keep using the same label name (cli #117; see
+    # metaphor docs/release-pipeline.md for the chain).
+    check ".github/workflows/syphon-bump.yml" \
+      "release:patch"
+    check ".github/workflows/release-on-merge.yml" \
+      "release:patch"
     # AI doc filenames the `api_reference` MCP tool reads from the metaphor package.
     check "Sources/MetaphorCLICore/MCP/MetaphorDocsLocator.swift" \
       "llms.txt"
