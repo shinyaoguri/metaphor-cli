@@ -78,7 +78,7 @@ jobs:
 
       - name: Open pull request
         if: steps.resolve.outputs.skip != 'true'
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           branch: chore/bump-syphon-${{ steps.resolve.outputs.tag }}
           base: main
