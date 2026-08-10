@@ -48,18 +48,46 @@ Formula は prebuilt binary ではなく source tarball から SwiftPM build し
 
 ## Release Flow
 
-stable リリース時は Release workflow が `shinyaoguri/homebrew-tap` の
-`Formula/metaphor.rb` を自動で更新します。prerelease (`vX.Y.Z-LABEL.N`) の
+stable リリース時は Release workflow が `shinyaoguri/homebrew-tap` へ
+`Formula/metaphor.rb` の更新 **PR** を出します。prerelease (`vX.Y.Z-LABEL.N`) の
 ときは tap への反映はスキップされ、GitHub Release に Formula draft が
 添付されるだけになります。
 
-1. `metaphor-cli` で Release workflow を `bump=patch/minor/major` で実行する。
-2. workflow が以下を行う:
+1. `metaphor-cli` のリリースが出る（週次の pin bump からの自動、または手動 dispatch）。
+2. Release workflow が以下を行う:
    - source tarball / バイナリ / `metaphor.rb` を GitHub Release に添付。
-   - stable のときだけ `shinyaoguri/homebrew-tap` を checkout して
-     `Formula/metaphor.rb` を上書き、`Update metaphor to <tag>` という
-     commit を push。
-3. 反映後に tap 側で audit と install test を回す（任意）。
+   - stable のときだけ tap に `metaphor-<version>` ブランチを push し、
+     `metaphor <version>` というタイトルの PR を作る。
+3. tap の `brew test-bot` が PR で走る。ここで **実際に Formula をビルドし
+   `brew test` を通し、macOS 版ごとの bottle を作ります**。
+4. green になると tap の `publish.yml` が `brew pr-pull` で bottle を取り込み、
+   main へ push して PR を閉じる。
+
+**人の承認は挟みません。** 3 が実質のレビューで、壊れた Formula はそこで止まります。
+
+### なぜ直 push をやめたか
+
+以前は tap の main へ直接 commit していました。tap の `brew test-bot` は
+`--only-formulae`（実ビルド + `brew test`）を `pull_request` でしか走らせないため、
+直 push で通っていたのは構文チェックだけで、**壊れた Formula がそのまま
+ユーザーに届く経路**になっていました。PR を経由すると同時に bottle も手に入るので、
+`brew install` が毎回 Swift のソースビルドを回す必要もなくなります。
+
+### bottle の置き場（初回だけ手作業）
+
+bottle は GitHub Packages (`ghcr.io/shinyaoguri/tap`) に置きます。**初めて
+アップロードされたパッケージは private で作られる**ため、一度だけ public に
+変える必要があります（private のままだと、匿名で bottle を引く `brew install`
+が 401 で落ち、ソースビルドにも自動では戻りません）。
+
+1. GitHub の自分のプロフィール → Packages → `tap/metaphor`
+2. Package settings → Danger Zone → **Change visibility** → Public
+
+未設定のうちは `publish.yml` の bottle 取り込みが失敗しますが、その場合は
+**bottle 無しで Formula だけ merge され**（配布は止まらない）、run が赤くなって
+気付けるようにしてあります。
+
+### 手元での確認（任意）
 
 ```bash
 brew update
@@ -70,11 +98,38 @@ metaphor version
 metaphor examples
 ```
 
+## 届いたかどうかの監査
+
+metaphor(ライブラリ) の安定版が brew のユーザーに届くまでには 4 段あり、
+どこかが止まっても前後の段は緑のままに見えます。実際、metaphor から
+metaphor-cli への `repository_dispatch` は資格情報が未設定のまま一度も発火せず、
+リリースは毎回成功扱いでした（`v0.8.0` の pin 反映まで 9 日）。
+
+`release-pipeline-audit.yml` が毎日 tap の Formula から逆算し、48 時間経っても
+届いていなければ詰まっている段を名指しして Issue を立てます。全段揃うと自動で
+クローズされます。手元でも同じ判定を出せます:
+
+```bash
+python3 scripts/audit-release-pipeline.py --dry-run
+```
+
+| 段 | 何が起きる | どこ |
+|---|---|---|
+| 1 | metaphor の安定版が `repository_dispatch`(`syphon-release`) を撃つ | metaphor `release.yml` |
+| 2 | Syphon pin を上げる PR が出て、CI green で auto-merge | `syphon-bump.yml` |
+| 3 | `release:patch` ラベルで metaphor-cli のリリースが出る | `release-on-merge.yml` → `release.yml` |
+| 4 | tap へ Formula PR → bottle 込みで main へ | `release.yml` → homebrew-tap `publish.yml` |
+
 ## Tap Credentials (GitHub App)
 
-Actions が自動発行する `GITHUB_TOKEN` は `metaphor-cli` にしかスコープされず、
-別リポジトリである tap には push できません。そのため tap への push だけは
-専用の資格情報を使います。
+Actions が自動発行する `GITHUB_TOKEN` は発行元のリポジトリにしかスコープされず、
+リポジトリをまたぐ操作には使えません。そのため次の 3 つは専用の資格情報を使います。
+
+| 使う場所 | 何をする | 必要な install 先 |
+|---|---|---|
+| metaphor-cli `release.yml` | tap へ Formula 更新 PR を出す | `homebrew-tap` |
+| metaphor-cli `syphon-bump.yml` | Syphon pin bump PR を出す | `metaphor-cli` |
+| **metaphor `release.yml`** | metaphor-cli へ `repository_dispatch` を撃つ | `metaphor-cli` |
 
 採用しているのは **GitHub App のインストールトークン**です。App の private key
 自体は無期限ですが、そこから発行されるトークンは 1 時間で失効するため、
@@ -85,20 +140,21 @@ Actions が自動発行する `GITHUB_TOKEN` は `metaphor-cli` にしかスコ�
 ### 初回セットアップ（一度だけ）
 
 現在使っているのは **`metaphor-tap-publisher`** です。名前は tap 専用に見えますが、
-**このリポジトリの自動化全般**に使います（もう 1 つの用途は `syphon-bump.yml` が開く
-Syphon pin bump PR。GITHUB_TOKEN で PR を作ると CI が発火せず署名も付かないため、
-同じ App のトークンで作っています。詳細は [DEVELOPMENT.md](../DEVELOPMENT.md) の
-Syphon pin bump の節）。App 名は歴史的経緯でそのままですが、secret 名を
-`REPO_AUTOMATION_APP_*` と中立にしてあるのは用途がこの 2 つに広がっているためです。
-**新しい App を作る必要はありません** — 以下は作り直すときの手順です。
+実際は上の表の 3 用途すべてに使います（`syphon-bump.yml` の PR を GITHUB_TOKEN で
+作ると CI が発火せず署名も付かないため、同じ App のトークンで作っています。詳細は
+[DEVELOPMENT.md](../DEVELOPMENT.md) の Syphon pin bump の節）。App 名は歴史的経緯で
+そのままですが、secret 名を `REPO_AUTOMATION_APP_*` と中立にしてあるのは用途が
+広がっているためです。**新しい App を作る必要はありません** — 以下は作り直すときの
+手順です。
 
 1. GitHub の Settings → Developer settings → **GitHub Apps** → New GitHub App
    - GitHub App name: 任意（既存は `metaphor-tap-publisher`）
    - Homepage URL: 任意（リポジトリ URL でよい）
    - **Webhook: Active のチェックを外す**（不要）
    - Repository permissions:
-     - **Contents: Read and write** — tap への push と bump PR のブランチ作成
-     - **Pull requests: Read and write** — bump PR の作成
+     - **Contents: Read and write** — ブランチの作成・push と `repository_dispatch`
+       （dispatches エンドポイントが見るのはこの権限）
+     - **Pull requests: Read and write** — tap の Formula PR と Syphon pin bump PR
      - （Metadata: Read-only は自動付与）
    - Where can this GitHub App be installed?: Only on this account
 2. 作成後の General 画面で **Client ID**（`Iv23li...` 形式）を控える。
@@ -108,15 +164,19 @@ Syphon pin bump の節）。App 名は歴史的経緯でそのままですが、
 4. 左メニュー Install App → 自分のアカウントに install。
    Repository access は **Only select repositories** →
    `shinyaoguri/homebrew-tap` と `shinyaoguri/metaphor-cli` の **2 つ**を選ぶ。
-   （tap だけだと bump PR の作成が `Mint app token` step で失敗します）
-5. `metaphor-cli` repo の Settings → Secrets and variables → Actions →
-   New repository secret で 2 つ登録する。
+   （tap だけだと bump PR の作成が `Mint app token` step で失敗します。
+   metaphor 側から dispatch を撃つのに必要なのは `metaphor-cli` への install で、
+   `metaphor` 自体を install 先に加える必要はありません）
+5. `metaphor-cli` **と `metaphor`** の両方の repo で Settings → Secrets and
+   variables → Actions → New repository secret に 2 つ登録する。
    - `REPO_AUTOMATION_APP_CLIENT_ID` — 手順 2 の Client ID
    - `REPO_AUTOMATION_APP_PRIVATE_KEY` — 手順 3 の `.pem` の**中身全体**
      （`-----BEGIN...` から `-----END...` まで、改行を含めてそのまま貼る）
 
    Client ID 自体は秘密ではありませんが、private key と対で扱うほうが
    参照箇所が 1 つにまとまるため secret に置いています。
+   **`metaphor` 側に登録し忘れると、リリースは出るが下流に伝わらず
+   `Mint metaphor-cli dispatch token` step で赤くなります。**
 
 Release workflow の `Mint homebrew-tap token` step
 (`actions/create-github-app-token`) がこの 2 つからトークンを発行し、
@@ -130,9 +190,9 @@ Release workflow の `Mint homebrew-tap token` step
 古い key を App 側から削除します。
 
 `Bad credentials` や 403 で落ちるときは、App の install の Repository access に
-対象リポジトリが含まれているかを確認してください（tap への push なら
-`homebrew-tap`、Syphon pin bump PR の作成なら `metaphor-cli`）。
-**この install 範囲を絞ると tap だけでなく bump PR も止まります。**
+対象リポジトリが含まれているかを確認してください（tap の Formula PR なら
+`homebrew-tap`、Syphon pin bump PR と metaphor からの dispatch なら `metaphor-cli`）。
+**この install 範囲を絞ると、上の表の 3 用途がまとめて止まります。**
 
 ## Update Behavior
 

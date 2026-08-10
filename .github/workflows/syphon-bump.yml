@@ -2,11 +2,17 @@ name: Bump Syphon pin
 
 # Keeps the Syphon.xcframework pin in Package.swift in sync with metaphor's
 # latest stable release. See CONTRACT.md (L2a). Three triggers:
-#   - repository_dispatch (syphon-release): instant, fired by metaphor's release
-#     workflow. Requires CLI_DISPATCH_TOKEN on the metaphor side.
-#   - schedule: a weekly poll so a missed/untokened dispatch still gets picked
-#     up — works with the repo's own GITHUB_TOKEN, no secret required.
+#   - repository_dispatch (syphon-release): the live path, fired by metaphor's
+#     release workflow with a GitHub App installation token.
+#   - schedule: a weekly poll, the backstop for a dispatch that never arrives —
+#     works with the repo's own GITHUB_TOKEN, no secret required.
 #   - workflow_dispatch: manual backfill.
+#
+# The PR this opens is auto-merged (see the last step): a pin only reaches
+# Homebrew users through a metaphor-cli release, and a PR that waits for a human
+# stalls the whole chain. It sat unmerged for 9 days between metaphor v0.8.0 and
+# the release that consumed it. release-pipeline-audit.yml watches the end of
+# the chain in case this one is the step that breaks.
 on:
   repository_dispatch:
     types: [syphon-release]
@@ -94,6 +100,7 @@ jobs:
           repositories: metaphor-cli
 
       - name: Open pull request
+        id: cpr
         if: steps.resolve.outputs.skip != 'true'
         uses: peter-evans/create-pull-request@v8
         with:
@@ -113,5 +120,22 @@ jobs:
             - URL: `releases/download/${{ steps.resolve.outputs.tag }}/Syphon.xcframework.zip`
             - checksum (re-derived from the published asset): `${{ steps.resolve.outputs.checksum }}`
 
-            Review and merge to consume the new Syphon build.
+            `build-and-test` が green になり次第 auto-merge され、`release:patch`
+            ラベルで release-on-merge.yml がリリースを出します。止めたいときは
+            auto-merge を解除してください。
           delete-branch: true
+
+      # CI green で勝手に入る。中身は「新しい Syphon の URL + checksum」だけで、
+      # しかも checksum は公開済みアセットから引き直しているので、人が読んで
+      # 判断する余地がほとんどない。むしろ人待ちにしていた期間の実績が悪く
+      # (v0.8.0 → 9 日)、その間 brew のユーザーは古い Syphon のままだった。
+      # 誤ったピンは build-and-test（実際に binaryTarget を解決する）で落ちる。
+      - name: Enable auto-merge
+        if: steps.resolve.outputs.skip != 'true' && steps.cpr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
+        run: |
+          set -euo pipefail
+          gh pr merge "$PR_NUMBER" --squash --auto
+          echo "auto-merge を有効化しました: PR #${PR_NUMBER}"
