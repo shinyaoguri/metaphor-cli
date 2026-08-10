@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shinyaoguri/metaphor/contract/state.schema.json",
+  "title": "State preservation state.json",
+  "description": "Producer (metaphor のスケッチ = StatePlugin) が save-request に応答して .metaphor/state/state.json へアトミックに書き出す、リロードをまたいで運ぶ状態のスナップショット。consumer (metaphor watch) は savedRequestId のエコーで ready を検知し、子を作り直すときに METAPHOR_RESTORE_STATE でこのファイルのパスを渡す。Swift 型 SketchStateFile (Sources/MetaphorCore/State/SketchStateFile.swift) が意味の正典。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "runtime"],
+  "properties": {
+    "schemaVersion": {
+      "description": "現行 = 1。additive 変更では上げず、キーのリネーム/削除/型変更でのみ上げる。",
+      "const": 1
+    },
+    "savedRequestId": {
+      "description": "応答した save-request.json の id のエコー。consumer はこれが送った id と一致したら kill してよい。リクエスト由来でない書き出し (将来の自動保存) では省略。",
+      "type": "string"
+    },
+    "runtime": {
+      "description": "metaphor 自身が復元する実行時状態 (時計)。復元は SketchConfig.preserveClock = true のときだけ行われる。",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frameCount", "elapsedSeconds"],
+      "properties": {
+        "frameCount": {
+          "description": "保存時点でレンダリング済みのフレーム数。復元後の最初の draw() はこの次の番号になる。",
+          "type": "integer",
+          "minimum": 0
+        },
+        "elapsedSeconds": {
+          "description": "スケッチ開始からの経過秒数。復元側は実時間にこの値を加算して時計を継続する。",
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "user": {
+      "description": "Sketch.saveState() が返した opaque ペイロード。エンベロープだけが契約で、中身はスケッチ作者のもの (consumer は解釈せず運ぶだけ)。saveState() が nil を返すスケッチでは省略。",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["encoding", "data"],
+      "properties": {
+        "encoding": {
+          "description": "data のエンコーディング。現行は base64 のみ。未知の値は復元側で無視される (時計だけは復元される)。",
+          "enum": ["base64"]
+        },
+        "data": {
+          "description": "ペイロード本体 (base64)。",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

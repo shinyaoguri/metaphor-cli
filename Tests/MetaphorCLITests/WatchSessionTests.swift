@@ -635,3 +635,135 @@ final class WatchSessionTests: XCTestCase {
         XCTAssertEqual(partial.timingsSummary, "timings: build_ms=900.0")
     }
 }
+
+// MARK: - 状態保持リロード（CONTRACT.md 契約点 8）
+
+/// `save-request.json` を監視して `state.json` を書く擬似 producer（子スケッチ役）。
+/// 本物と同じく id をエコーし、アトミックに置く。
+private final class StubStateProducer {
+    private let stateRoot: URL
+    private let queue = DispatchQueue(label: "stub-state-producer")
+    private var running = false
+
+    init(sketchDirectory: URL) {
+        self.stateRoot = sketchDirectory
+            .appendingPathComponent(".metaphor", isDirectory: true)
+            .appendingPathComponent("state", isDirectory: true)
+    }
+
+    func start() {
+        running = true
+        queue.async { [self] in
+            var lastHandledId: String?
+            while running {
+                let url = stateRoot.appendingPathComponent("save-request.json")
+                if let data = try? Data(contentsOf: url),
+                   let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                   let id = dict["id"] as? String, id != lastHandledId {
+                    lastHandledId = id
+                    let object: [String: Any] = [
+                        "schemaVersion": 1,
+                        "savedRequestId": id,
+                        "runtime": ["frameCount": 10, "elapsedSeconds": 0.5],
+                    ]
+                    if let out = try? JSONSerialization.data(withJSONObject: object) {
+                        let final = stateRoot.appendingPathComponent("state.json")
+                        let tmp = stateRoot.appendingPathComponent("state.json.tmp")
+                        try? out.write(to: tmp)
+                        try? ProbeAtomicFile.replace(tmp: tmp, final: final)
+                    }
+                }
+                usleep(2_000)
+            }
+        }
+    }
+
+    func stop() { running = false }
+}
+
+final class WatchSessionStateHandoffTests: XCTestCase {
+
+    private var directory: URL!
+
+    override func setUpWithError() throws {
+        directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("metaphor-watch-state-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    private func makeSession(
+        runner: RecordingProcessRunner,
+        launcher: RecordingLauncher,
+        watcher: ManualFileWatcher,
+        timeout: TimeInterval
+    ) -> WatchSession {
+        WatchSession(
+            directory: directory,
+            swiftArguments: [],
+            console: BufferedConsole(),
+            processRunner: runner,
+            launcher: launcher,
+            watcher: watcher,
+            binaryResolver: NullBinaryResolver(),
+            stateHandoff: StateHandoff(sketchDirectory: directory, timeout: timeout)
+        )
+    }
+
+    func testChildGetsStateOptInAndRestorePathOnReload() throws {
+        let producer = StubStateProducer(sketchDirectory: directory)
+        producer.start()
+        defer { producer.stop() }
+
+        let launcher = RecordingLauncher()
+        let watcher = ManualFileWatcher()
+        let session = makeSession(
+            runner: RecordingProcessRunner(), launcher: launcher, watcher: watcher, timeout: 2.0
+        )
+
+        try session.start()
+        watcher.fireChange()
+
+        // 初回起動: 状態保持は有効化されるが、引き継ぐ状態はまだ無い。
+        let first = try XCTUnwrap(launcher.environments.first ?? nil)
+        XCTAssertEqual(first["METAPHOR_STATE"], "1")
+        XCTAssertNil(first["METAPHOR_RESTORE_STATE"])
+
+        // リロード後: 直前の子が保存した state.json を読み戻す。
+        let second = try XCTUnwrap(launcher.environments.last ?? nil)
+        XCTAssertEqual(
+            second["METAPHOR_RESTORE_STATE"],
+            directory
+                .appendingPathComponent(".metaphor/state/state.json").path
+        )
+    }
+
+    func testUnansweredSaveRequestDisablesFurtherRequests() throws {
+        // producer 無し = 状態保持を使っていないスケッチ。
+        let launcher = RecordingLauncher()
+        let watcher = ManualFileWatcher()
+        let session = makeSession(
+            runner: RecordingProcessRunner(), launcher: launcher, watcher: watcher, timeout: 0.05
+        )
+
+        try session.start()
+        watcher.fireChange()
+
+        let requestPath = directory.appendingPathComponent(".metaphor/state/save-request.json")
+        let firstMTime = try XCTUnwrap(
+            try FileManager.default.attributesOfItem(atPath: requestPath.path)[.modificationDate] as? Date
+        )
+
+        watcher.fireChange()
+
+        // 2 回目のリロードでは要求を出し直さない（毎回タイムアウトを待たない）。
+        let secondMTime = try XCTUnwrap(
+            try FileManager.default.attributesOfItem(atPath: requestPath.path)[.modificationDate] as? Date
+        )
+        XCTAssertEqual(firstMTime, secondMTime)
+        XCTAssertNil((launcher.environments.last ?? nil)?["METAPHOR_RESTORE_STATE"])
+    }
+}

@@ -55,6 +55,8 @@ validate request.schema.json  contract/examples/request.json contract/examples/r
 validate sequence.schema.json contract/examples/sequence.json
 validate params.schema.json   contract/examples/params.json contract/examples/params-minimal.json
 validate param-set-request.schema.json contract/examples/param-set-request.json
+validate state.schema.json    contract/examples/state.json contract/examples/state-minimal.json
+validate state-save-request.schema.json contract/examples/state-save-request.json
 
 if [ "$fail" -ne 0 ]; then
   echo ""
