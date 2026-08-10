@@ -1,5 +1,10 @@
 # Homebrew Packaging
 
+> 3 リポジトリ（metaphor / metaphor-cli / homebrew-tap）の依存関係と
+> リリース自動連鎖の全体地図は
+> [metaphor の docs/release-pipeline.md](https://github.com/shinyaoguri/metaphor/blob/main/docs/release-pipeline.md)。
+> 本ページは metaphor-cli → homebrew-tap 区間（Formula・bottle・tap 資格情報）の正本です。
+
 `metaphor-cli` は `shinyaoguri/homebrew-tap` からインストールできます。
 ユーザー向けの推奨導線は次のコマンドです。
 
