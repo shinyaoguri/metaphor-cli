@@ -219,15 +219,23 @@ metaphor の新リリースを検出して bump PR を自動作成します。me
 gh workflow run "Bump Syphon pin" -R shinyaoguri/metaphor-cli
 ```
 
-**bot 作成の PR は CI が発火しません**(GITHUB_TOKEN 起点のイベントは再帰防止のため `pull_request`
-workflow をトリガーしない、という GitHub Actions の仕様)。required check(build-and-test)を
-揃えるには、PR を **close → reopen** してください(自分のアカウント起点の reopened イベントで
-正規の CI が走ります。`gh workflow run CI --ref <branch>` では required check として認識されません)。
-その後 CI green を確認して squash merge します。
+この PR は **GitHub App のインストールトークン**で作られ、コミットは `sign-commits: true` により
+GitHub Actions API 経由で作成されます(= GitHub が署名)。これは main の保護を満たすために両方必要です:
 
-滞留自体を無くす恒久策(fine-grained PAT 化など)の検討経緯は
-[#78](https://github.com/shinyaoguri/metaphor-cli/issues/78) を参照。リリース頻度が低い間は
-本手順(close→reopen)で受容する判断です。
+- **CI の発火** — GITHUB_TOKEN 起点のイベントは再帰防止のため `pull_request` workflow を
+  トリガーしない、という GitHub Actions の仕様がある。App トークンで作れば正規に発火する
+- **required_signatures** — ローカル git commit のままでは未署名になりマージがブロックされる。
+  API 経由の commit なら verified になる
+
+App は `release.yml` が homebrew-tap への push に使うものと同一(secret も
+`HOMEBREW_TAP_APP_CLIENT_ID` / `HOMEBREW_TAP_APP_PRIVATE_KEY` を共用)で、metaphor-cli 自身にも
+Contents: write / Pull requests: write でインストールしてあります。**App のインストールが外れると
+bump PR は再び CI 未発火 + 未署名に戻る**ので、その場合はまずインストール状態を確認してください。
+
+暫定対処(過去の手順): 未署名・CI 未発火の bot PR が残っている場合、close → reopen で
+自分のアカウント起点の reopened イベントにすると CI は走りますが、**署名は付かないため
+マージはできません**。ローカルで同じ変更を署名付きコミットにして PR を作り直してください。
+検討の経緯は [#78](https://github.com/shinyaoguri/metaphor-cli/issues/78) を参照。
 
 ## Release / Homebrew
 
