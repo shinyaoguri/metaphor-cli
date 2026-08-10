@@ -73,19 +73,21 @@ stable リリース時は Release workflow が `shinyaoguri/homebrew-tap` へ
 ユーザーに届く経路**になっていました。PR を経由すると同時に bottle も手に入るので、
 `brew install` が毎回 Swift のソースビルドを回す必要もなくなります。
 
-### bottle の置き場（初回だけ手作業）
+### bottle の置き場
 
-bottle は GitHub Packages (`ghcr.io/shinyaoguri/tap`) に置きます。**初めて
-アップロードされたパッケージは private で作られる**ため、一度だけ public に
-変える必要があります（private のままだと、匿名で bottle を引く `brew install`
-が 401 で落ち、ソースビルドにも自動では戻りません）。
+bottle は **tap 自身の GitHub Release**（`metaphor-<version>` タグ）に置かれます。
+`brew pr-pull` の既定で、手作業の設定は要りません。
 
-1. GitHub の自分のプロフィール → Packages → `tap/metaphor`
-2. Package settings → Danger Zone → **Change visibility** → Public
+> **触ってはいけない**: `HOMEBREW_GITHUB_PACKAGES_*` や `--root-url` を渡して
+> GitHub Packages (ghcr.io) に振り替えようとすると、**アップロード先だけ**が
+> ghcr へ逸れ、Formula に書かれる `root_url` は GitHub Release のまま残ります。
+> しかも作られるパッケージは private です。2026-08-10 にこれで `metaphor 0.7.2`
+> の Formula が実体の無い bottle を指し、`brew install` が 404 で落ちました
+> （homebrew-tap #3 / #4）。**アップロード先と `root_url` は必ず同じ既定から
+> 出させること。**
 
-未設定のうちは `publish.yml` の bottle 取り込みが失敗しますが、その場合は
-**bottle 無しで Formula だけ merge され**（配布は止まらない）、run が赤くなって
-気付けるようにしてあります。
+bottle を取り込めなかった場合は **bottle 無しで Formula だけ merge され**
+（配布は止まらない）、run が赤くなって気付けるようにしてあります。
 
 ### 手元での確認（任意）
 
