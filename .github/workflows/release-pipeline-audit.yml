@@ -1,0 +1,46 @@
+name: Release pipeline audit
+
+# metaphor の安定版が brew まで届いたかを毎日 1 回だけ確かめる。
+#
+# 配送は 4 段（dispatch → pin bump PR → cli リリース → tap の Formula）あり、
+# どの段で止まっても前後の段は緑のままになる。実際 metaphor 側の dispatch は
+# 資格情報が未設定のまま一度も発火せず、リリースは毎回成功扱いだった。
+# ここは個々のワークフローの成否を見ず、最終地点の Formula から逆算するので、
+# まだ知らない壊れ方も同じ 1 本で captured される。
+#
+# しきい値(48h)内は「まだ配送中」として黙る。超えたら metaphor-cli に Issue を
+# 立て、全段揃った次の監査でその Issue を自動で閉じる。
+on:
+  schedule:
+    - cron: '0 7 * * *'   # daily, 07:00 UTC — syphon-bump の週次 poll(06:17 UTC)の後
+  workflow_dispatch:
+    inputs:
+      max_lag_hours:
+        description: '未達をどれだけ許容するか（時間）'
+        required: false
+        default: '48'
+      dry_run:
+        description: '判定だけ表示して起票しない'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: release-pipeline-audit
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Audit the release pipeline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/audit-release-pipeline.py \
+            --max-lag-hours "${{ github.event.inputs.max_lag_hours || '48' }}" \
+            ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}

@@ -212,16 +212,28 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # --- Push the generated Formula to shinyaoguri/homebrew-tap ---
+      # --- Open a Formula update PR against shinyaoguri/homebrew-tap ---
       # Only stable releases land in the tap. Prereleases stay attached to the
       # GitHub Release for direct installer / manual `brew install <url>` use.
       #
-      # GITHUB_TOKEN is scoped to this repository, so pushing to the tap needs
+      # This used to commit straight to the tap's main. That skipped the tap's
+      # own brew test-bot: its `--only-formulae` run (the one that actually
+      # builds the Formula and runs `brew test`) is gated on `pull_request`, so
+      # a direct push only ever got a syntax check. A broken Formula would have
+      # reached users unnoticed. Going through a PR also produces the bottles —
+      # test-bot builds them per macOS version and publish.yml pulls them in, so
+      # `brew install` stops rebuilding from source on every machine.
+      #
+      # Nothing waits for a human: the tap merges the PR itself once test-bot is
+      # green (homebrew-tap/.github/workflows/publish.yml).
+      #
+      # GITHUB_TOKEN is scoped to this repository, so touching the tap needs
       # separate credentials. A GitHub App mints one that expires within the
       # hour: nothing to rotate on a schedule, and a leak cannot outlive the
       # run. The same App also opens the Syphon pin bump PR in this repository
-      # (syphon-bump.yml) — hence the neutral secret names. Scope the token to
-      # the tap only. See docs/homebrew.md for the one-time App setup.
+      # (syphon-bump.yml) and receives metaphor's release dispatch — hence the
+      # neutral secret names. It needs Contents: write AND Pull requests: write
+      # on the tap. See docs/homebrew.md for the one-time App setup.
       - name: Mint homebrew-tap token
         id: tap-token
         if: env.IS_PRERELEASE == 'false'
@@ -239,21 +251,50 @@ jobs:
           repository: shinyaoguri/homebrew-tap
           token: ${{ steps.tap-token.outputs.token }}
           path: tap
-          fetch-depth: 1
+          fetch-depth: 0
 
-      - name: Update Formula in homebrew-tap
+      - name: Open Formula PR in homebrew-tap
         if: env.IS_PRERELEASE == 'false'
+        env:
+          GH_TOKEN: ${{ steps.tap-token.outputs.token }}
         run: |
           set -euo pipefail
           mkdir -p tap/Formula
           cp dist/homebrew/metaphor.rb tap/Formula/metaphor.rb
           cd tap
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/metaphor.rb
-          if git diff --cached --quiet; then
+          # --porcelain, not `git diff`: on a tap that does not carry the Formula
+          # yet the file is untracked, and `git diff` would call that "no change".
+          if [ -z "$(git status --porcelain -- Formula/metaphor.rb)" ]; then
             echo "Formula already up to date."
             exit 0
           fi
-          git commit -m "Update metaphor to ${TAG_NAME}"
-          git push
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Homebrew's convention for a version bump commit is `<formula> <version>`;
+          # brew pr-pull carries this message onto the tap's main as-is.
+          BRANCH="metaphor-${VERSION}"
+          git switch -c "$BRANCH"
+          git add Formula/metaphor.rb
+          git commit -m "metaphor ${VERSION}"
+          # A re-run of the same release rewrites its own branch rather than
+          # failing on a leftover from the first attempt.
+          git push --force origin "$BRANCH"
+          if gh pr view "$BRANCH" --repo shinyaoguri/homebrew-tap >/dev/null 2>&1; then
+            echo "PR は既にあります（ブランチを更新しました）: $BRANCH"
+            exit 0
+          fi
+          gh pr create \
+            --repo shinyaoguri/homebrew-tap \
+            --base main \
+            --head "$BRANCH" \
+            --title "metaphor ${VERSION}" \
+            --body "$(cat <<EOF
+          [metaphor-cli ${TAG_NAME}](https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG_NAME}) の Formula 更新（\`release.yml\` が自動作成）。
+
+          - source tarball: \`metaphor-cli_${TAG_NAME}_source.tar.gz\`
+          - Formula の生成元: \`Packaging/Homebrew/metaphor.rb.template\`
+
+          brew test-bot が green になり次第、bottle 込みで自動 merge されます。
+          EOF
+          )"
+          echo "Formula PR を作成しました: metaphor ${VERSION}"
