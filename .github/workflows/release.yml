@@ -219,14 +219,16 @@ jobs:
       # GITHUB_TOKEN is scoped to this repository, so pushing to the tap needs
       # separate credentials. A GitHub App mints one that expires within the
       # hour: nothing to rotate on a schedule, and a leak cannot outlive the
-      # run. See docs/homebrew.md for the one-time App setup.
+      # run. The same App also opens the Syphon pin bump PR in this repository
+      # (syphon-bump.yml) — hence the neutral secret names. Scope the token to
+      # the tap only. See docs/homebrew.md for the one-time App setup.
       - name: Mint homebrew-tap token
         id: tap-token
         if: env.IS_PRERELEASE == 'false'
         uses: actions/create-github-app-token@v3
         with:
-          client-id: ${{ secrets.HOMEBREW_TAP_APP_CLIENT_ID }}
-          private-key: ${{ secrets.HOMEBREW_TAP_APP_PRIVATE_KEY }}
+          client-id: ${{ secrets.REPO_AUTOMATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.REPO_AUTOMATION_APP_PRIVATE_KEY }}
           owner: shinyaoguri
           repositories: homebrew-tap
 
