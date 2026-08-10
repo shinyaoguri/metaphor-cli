@@ -17,6 +17,7 @@ final class SketchToolHandlerTests: XCTestCase {
         return SketchToolHandler(
             snapshotTool: ProbeSnapshotTool(sketchDirectory: dir, timeout: 1.0),
             sequenceTool: ProbeSequenceTool(sketchDirectory: dir, timeout: 1.0),
+            parameterStoreTool: ParameterStoreTool(sketchDirectory: dir, timeout: 1.0),
             forwardInput: { box.lines.append($0) },
             buildStatusProvider: { box.outcome },
             inputAvailable: inputAvailable,
@@ -28,8 +29,38 @@ final class SketchToolHandlerTests: XCTestCase {
         let names = makeHandler(Box()).tools.map(\.name)
         XCTAssertEqual(
             Set(names),
-            ["snapshot", "capture_sequence", "input", "build_status", "api_reference"]
+            ["snapshot", "capture_sequence", "input", "params", "set_param",
+             "build_status", "api_reference"]
         )
+    }
+
+    // MARK: - params / set_param
+
+    func testSetParamRequiresValues() {
+        let result = makeHandler(Box()).call(name: "set_param", arguments: [:])
+        XCTAssertTrue(result.isError)
+        let text = result.content.first?["text"] as? String
+        XCTAssertTrue(text?.contains("values") == true)
+    }
+
+    func testSetParamPassesValuesThroughToStore() {
+        // ストアが無いディレクトリなので即エラー（タイムアウト待ちしない）。
+        // 引数が握り潰されず ParameterStoreTool まで届いていることの確認も兼ねる。
+        let result = makeHandler(Box()).call(name: "set_param", arguments: ["values": ["radius": 1]])
+        XCTAssertTrue(result.isError)
+        let text = result.content.first?["text"] as? String
+        XCTAssertTrue(text?.contains("params.json") == true)
+    }
+
+    /// `@Param` を足した直後にビルドが失敗していると、params の一覧は旧バイナリの
+    /// 宣言のままになる。素性ノートで「まだ反映されていないかもしれない」と伝える。
+    func testParamsCarriesBuildFailureNote() {
+        let box = Box()
+        box.outcome = BuildOutcome(succeeded: false, exitCode: 1, output: "error: boom", initial: false)
+        let result = makeHandler(box).call(name: "params", arguments: [:])
+
+        let joined = result.content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        XCTAssertTrue(joined.contains("直近の swift build は失敗"))
     }
 
     func testCaptureSequenceRejectsFramesBelowTwo() {

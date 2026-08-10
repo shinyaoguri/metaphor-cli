@@ -1,0 +1,65 @@
+{
+  "appliedRequestId" : "01J2ZK9M3QW8XV4T7YB0C5D6EF",
+  "params" : [
+    {
+      "max" : 200,
+      "min" : 10,
+      "name" : "radius",
+      "type" : "float",
+      "value" : 120
+    },
+    {
+      "max" : 512,
+      "min" : 1,
+      "name" : "count",
+      "type" : "int",
+      "value" : 128
+    },
+    {
+      "name" : "showGrid",
+      "type" : "bool",
+      "value" : false
+    },
+    {
+      "choices" : [
+        "add",
+        "multiply"
+      ],
+      "name" : "mode",
+      "type" : "string",
+      "value" : "add"
+    },
+    {
+      "name" : "tint",
+      "type" : "color",
+      "value" : [
+        1,
+        0.5,
+        0.25,
+        1
+      ]
+    },
+    {
+      "name" : "origin",
+      "type" : "vec2",
+      "value" : [
+        640,
+        360
+      ]
+    },
+    {
+      "name" : "wind",
+      "type" : "vec3",
+      "value" : [
+        0.1,
+        0,
+        -0.2
+      ]
+    }
+  ],
+  "revision" : 42,
+  "schemaVersion" : 1,
+  "warnings" : [
+    "unknown parameter 'radiuss'"
+  ]
+}

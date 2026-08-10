@@ -100,6 +100,26 @@
         }
       }
     },
+    "params": {
+      "description": "このフレームを生んだ Parameter Store (契約点 7) の値スナップショット。1 回の snapshot で「画像 + それを生んだパラメータ」が揃うため、consumer は別ファイルの読み取りタイミングに賭けずに来歴を確定できる。@Param が 1 つも宣言されていないスケッチではキー省略。単一フレーム経路と連続キャプチャの両方に載る (メモリ内の読み取りのみで syscall が無いため)。失敗応答では省略。schemaVersion 4 のまま additive 追加 (Issue #424)。",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "values"],
+      "properties": {
+        "revision": {
+          "description": "ストアの revision (値が変わるたびに単調増加)。params.json の revision と同じ意味で、自分が書いた set-request が反映された後のフレームかを画像とセットで判定できる。",
+          "type": "integer",
+          "minimum": 0
+        },
+        "values": {
+          "description": "パラメータ名 → 現在値 (型タグの無い裸の JSON。params.json の value と同じ表現)。型・レンジ・choices の正典は params.json 側で、ここは値のスナップショットに徹する。",
+          "type": "object",
+          "additionalProperties": {
+            "type": ["number", "boolean", "string", "array"]
+          }
+        }
+      }
+    },
     "performance": {
       "description": "リクエスト処理時に採取する実測パフォーマンス統計。スケッチの「重さ」を AI が画像からの推測でなく数値で判断するためのシグナル。単一フレーム経路 (current/frame.json) のみで搭載され、連続キャプチャ (sequence/frame.NNNN.json)・失敗応答・採取不能時 (レンダラー未接続等) はキー省略。schemaVersion 4 のまま additive 追加 (Issue #271)。",
       "type": "object",

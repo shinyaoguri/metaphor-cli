@@ -79,6 +79,14 @@ case "$REPO" in
     # Schema version VALUES — a bump here is a breaking change; CONTRACT.md must move too.
     check "Sources/MetaphorCore/Probe/MetaphorProbePlugin.swift" \
       "schemaVersion: 4" "schemaVersion: 1"
+    # Parameter Store file protocol: root path, request file name, opt-out env var
+    # (contract point 7). The JSON structure is the canon of contract/params.schema.json
+    # and contract/param-set-request.schema.json (check-contract-schema.sh), so grep here
+    # is limited to non-JSON tokens plus the schemaVersion VALUE below.
+    check "Sources/MetaphorCore/Parameters/ParameterPlugin.swift" \
+      ".metaphor/params" "set-request.json" METAPHOR_PARAMS
+    check "Sources/MetaphorCore/Parameters/ParameterFile.swift" \
+      "currentSchemaVersion = 1"
     # Syphon Release dispatch event_type fired to metaphor-cli (auto-bump, L2a).
     check ".github/workflows/release.yml" \
       "event_type=syphon-release"
