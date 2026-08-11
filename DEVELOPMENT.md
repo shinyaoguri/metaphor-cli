@@ -41,6 +41,12 @@ push しっぱなしで CI の赤に気付かないのを防ぐため、Claude C
 `FileWatching` / `SketchBinaryResolving` といったプロトコル越しに扱い、テストでモックを
 注入できます（`Support.swift` に実装とモックの土台）。
 
+ログの時刻表示は `TimestampedConsole`（`TimestampedConsole.swift`）という `Console`
+デコレータで実現しており、**長時間動き続ける `watch` の 2 経路にだけ**被せています
+（ビューア既定＝`main.swift`、`--no-viewer`＝`WatchCommand.swift`。どちらもヘルプ表示の
+後に被せるので使い方テキストには付きません）。`new` / `doctor` のような一発実行
+コマンドの整形済み出力には付けません。
+
 ### 主要ファイル
 
 - コマンドルータ: `Commands.swift`（`CommandLineTool`）。各コマンドは
