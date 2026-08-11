@@ -198,10 +198,14 @@ public struct WatchCommand {
             environment["METAPHOR_FPS"] = String(fps)
         }
 
+        // 長時間つけっぱなしになるログなので時刻を付ける（ヘルプは上で早期 return
+        // 済みなので、整形済みの使い方テキストには付かない）。
+        let logConsole = TimestampedConsole(base: console)
+
         let session = WatchSession(
             directory: currentDirectory,
             swiftArguments: parsed.swiftArguments,
-            console: console,
+            console: logConsole,
             processRunner: processRunner,
             launcher: FoundationProcessLauncher(),
             watcher: FSEventsFileWatcher(directory: currentDirectory),
@@ -218,13 +222,14 @@ public struct WatchCommand {
 
         try session.start()
         reporter?.start()
-        waitUntilInterrupted(session: session, reporter: reporter)
+        waitUntilInterrupted(session: session, reporter: reporter, console: logConsole)
     }
 
     /// SIGINT/SIGTERM を待ち、受信したらスケッチを停止して終了する。
     /// `dispatchMain()` がファイル監視タイマーと子プロセスを生かしたまま回す。
-    private func waitUntilInterrupted(session: WatchSession, reporter: MetricsReporter?) -> Never {
-        let console = self.console
+    private func waitUntilInterrupted(
+        session: WatchSession, reporter: MetricsReporter?, console: any Console
+    ) -> Never {
         let install: (Int32) -> Void = { sig in
             signal(sig, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: sig, queue: .global())

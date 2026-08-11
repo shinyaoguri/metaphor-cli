@@ -58,7 +58,9 @@ enum MetaphorCLIEntryPoint {
                 fps: parsed.fps,
                 metricsEnabled: parsed.metricsEnabled,
                 metricsInterval: parsed.metricsInterval,
-                console: StandardConsole()
+                // watch のログは長時間流れ続けるので時刻を付ける
+                // （`--no-viewer` 経路は WatchCommand 側で同じ装飾をしている）。
+                console: TimestampedConsole(base: StandardConsole())
             )
         } catch let error as CLIError {
             StandardConsole().writeError("error: \(error.message)")
