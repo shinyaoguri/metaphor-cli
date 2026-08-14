@@ -116,9 +116,21 @@ case "$REPO" in
     # stdin JSON Lines input event tags emitted to the child (contract point 3).
     check "Sources/MetaphorViewer/ViewerWindow.swift" \
       mouseDown mouseUp mouseMove mouseDrag scroll keyDown keyUp
-    # MCP `input` builder + `capture_sequence` tool: event field names + tool name.
+    # MCP `input` builder + the tool NAMES this repo exposes to agents. The tool set is
+    # documented in CONTRACT.md ("リポジトリの役割") and in metaphor's README/design docs,
+    # so a tool added or renamed here without updating those drifts silently (Issue
+    # metaphor#585, where `params`/`set_param` were missing from every prose list for
+    # two releases). Keep this list in sync with the `tools` definition.
+    # Match the DEFINITION form (`name: "<tool>"`), not a bare substring: every tool name
+    # also appears in other tools' prose descriptions, so a bare grep would still pass
+    # after a rename.
     check "Sources/MetaphorCLICore/MCP/SketchToolHandler.swift" \
-      button code chars repeat dx dy capture_sequence
+      button code chars repeat dx dy \
+      'name: "snapshot"' 'name: "capture_sequence"' 'name: "input"' \
+      'name: "params"' 'name: "set_param"' 'name: "build_status"' 'name: "api_reference"'
+    # Parameter Store consumer: root path + atomic set-request write (contract point 7).
+    check "Sources/MetaphorCLICore/MCP/ParameterStoreTool.swift" \
+      ".metaphor/params" "set-request.json.tmp"
     # Probe request.json is written ATOMICALLY (.tmp -> rename) by both tools (contract point 4).
     # The JSON structure of request.json/sequence.json is verified by contract/*.schema.json
     # (check-contract-schema.sh + consumer conformance tests), so only the atomic-write token
