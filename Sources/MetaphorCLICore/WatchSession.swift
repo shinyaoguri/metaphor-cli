@@ -214,11 +214,27 @@ public final class WatchSession {
         }
     }
 
-    /// 監視対象スケッチの `.swift` ソース署名を集約した決定論的スタンプ（provenance）。
+    /// 刻印（provenance）の対象とする拡張子。`.swift`（スケッチ本体）に加えて
+    /// `.metal`（シェーダソース）も含める。metaphor 側はシェーダファイルを
+    /// ホットリロードするので、`.metal` を落とすと「絵は違うのに同じ刻印」になり、
+    /// sourceStamp が名乗る「このフレームがどのソース版か」が嘘になる。
+    ///
+    /// **リビルドの引き金（``swiftSourceSignature(in:fileManager:)``）とは意図的に
+    /// 別集合**。`.metal` の保存で再ビルド＋再起動を起こすと、metaphor のホットリロードが
+    /// ただの再起動に化けて価値が消えるため、引き金は `.swift` のままにする。
+    private static let stampedSourceExtensions: Set<String> = ["swift", "metal"]
+
+    /// 監視対象スケッチのソース署名を集約した決定論的スタンプ（provenance）。
+    /// 対象は ``stampedSourceExtensions``（`.swift` / `.metal`）。
     /// 各ファイルの (パス:mtime:サイズ) を FNV-1a でハッシュする。編集すると mtime/サイズが
     /// 変わるので値が変わり、同一ソースでは再現する。`.build` 配下のビルド生成物は除外する。
     /// `METAPHOR_SOURCE_STAMP` として子スケッチへ渡し、frame.json の sourceStamp に反映される
     /// （契約点 2 / 4。CONTRACT.md の frame.json スキーマ v4 を参照）。
+    ///
+    /// - Note: 刻印は**子プロセス起動時にしか注入されない**（metaphor 側も起動時に一度だけ
+    ///   解決する）。したがって `.metal` 単独編集（再起動を伴わないホットリロード）の反映を
+    ///   この刻印で機械検出することはできない。それはリロードの着地時刻を知っている
+    ///   producer 側にしか作れないため、metaphor 側の課題として切り出してある（Issue #129）。
     func computeSourceStamp() -> String {
         var hash: UInt64 = 0xcbf2_9ce4_8422_2325  // FNV-1a (64-bit) offset basis
         let prime: UInt64 = 0x100_0000_01b3
@@ -234,7 +250,7 @@ public final class WatchSession {
                     enumerator.skipDescendants()
                     continue
                 }
-                guard url.pathExtension == "swift" else { continue }
+                guard Self.stampedSourceExtensions.contains(url.pathExtension) else { continue }
                 let values = try? url.resourceValues(
                     forKeys: [.contentModificationDateKey, .fileSizeKey]
                 )

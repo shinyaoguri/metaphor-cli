@@ -156,6 +156,73 @@ final class WatchSessionTests: XCTestCase {
         XCTAssertNotEqual(stamp1, session.computeSourceStamp())
     }
 
+    func testComputeSourceStampChangesWhenMetalEdited() throws {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("metaphor-stamp-\(UUID().uuidString)")
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: dir) }
+        try "let a = 1\n".write(
+            to: dir.appendingPathComponent("App.swift"), atomically: true, encoding: .utf8)
+        let shader = dir.appendingPathComponent("wave.metal")
+        try "// shader v1\n".write(to: shader, atomically: true, encoding: .utf8)
+
+        let session = makeStampSession(directory: dir)
+
+        // シェーダソースも provenance の対象。`.metal` だけ編集しても刻印は変わる
+        // （metaphor のホットリロードで絵が変わるので、刻印が据え置きだと嘘になる）。
+        let stamp1 = session.computeSourceStamp()
+        try "// shader v2 (longer)\n".write(to: shader, atomically: true, encoding: .utf8)
+        XCTAssertNotEqual(stamp1, session.computeSourceStamp())
+    }
+
+    func testMetalEditDoesNotChangeRebuildSignature() throws {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("metaphor-stamp-\(UUID().uuidString)")
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: dir) }
+        try "let a = 1\n".write(
+            to: dir.appendingPathComponent("App.swift"), atomically: true, encoding: .utf8)
+        let shader = dir.appendingPathComponent("wave.metal")
+        try "// shader v1\n".write(to: shader, atomically: true, encoding: .utf8)
+
+        // 刻印（provenance）とリビルドの引き金は別物。`.metal` の保存で再ビルド＋再起動が
+        // 走ると、metaphor 側のシェーダホットリロードが再起動に化けて価値が消える。
+        let signature = swiftSourceSignature(in: dir)
+        try "// shader v2 (longer)\n".write(to: shader, atomically: true, encoding: .utf8)
+        XCTAssertEqual(signature, swiftSourceSignature(in: dir))
+    }
+
+    func testComputeSourceStampIgnoresNonSourceExtensions() throws {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("metaphor-stamp-\(UUID().uuidString)")
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: dir) }
+        try "let a = 1\n".write(
+            to: dir.appendingPathComponent("App.swift"), atomically: true, encoding: .utf8)
+        let compiled = dir.appendingPathComponent("default.metallib")
+        try "binary v1\n".write(to: compiled, atomically: true, encoding: .utf8)
+
+        let session = makeStampSession(directory: dir)
+
+        // 拡張子は完全一致で判定する。`.metallib` はビルド生成物であってソースではない。
+        let stamp1 = session.computeSourceStamp()
+        try "binary v2 (longer)\n".write(to: compiled, atomically: true, encoding: .utf8)
+        XCTAssertEqual(stamp1, session.computeSourceStamp())
+    }
+
+    /// 刻印の計算だけを見るための最小セッション（ビルド・起動は行わない）。
+    private func makeStampSession(directory: URL) -> WatchSession {
+        WatchSession(
+            directory: directory,
+            swiftArguments: [],
+            console: BufferedConsole(),
+            processRunner: RecordingProcessRunner(),
+            launcher: RecordingLauncher(),
+            watcher: ManualFileWatcher(),
+            binaryResolver: NullBinaryResolver()
+        )
+    }
+
     func testParseWatchArgumentsStripsViewerFlags() {
         XCTAssertEqual(parseWatchArguments(["--no-viewer"]), ParsedWatchArguments(syphonName: nil, swiftArguments: []))
         XCTAssertEqual(parseWatchArguments(["--viewer"]), ParsedWatchArguments(syphonName: nil, swiftArguments: []))

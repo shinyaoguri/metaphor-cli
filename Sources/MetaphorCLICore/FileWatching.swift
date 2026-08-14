@@ -16,6 +16,11 @@ public protocol FileWatching: AnyObject {
 /// レイアウト（慣習的な `Sources/` / カスタム `path:` のどちらでも）に依存しない。
 /// `.build` や `.git` などの隠しディレクトリは `.skipsHiddenFiles` で除外される。
 /// ``PollingFileWatcher`` と ``FSEventsFileWatcher`` が変更判定に共用する。
+///
+/// - Important: これは**リビルドの引き金**であって provenance ではない。`.metal` は
+///   metaphor 側がプロセス内でホットリロードするので、ここに足すと再ビルド＋再起動に
+///   化けてホットリロードの価値が消える。刻印（`.swift` + `.metal`）の側は
+///   ``WatchSession/computeSourceStamp()`` が別に持つ。集合を揃えないこと。
 func swiftSourceSignature(in directory: URL, fileManager: FileManager = .default) -> String {
     var entries: [String] = []
 
