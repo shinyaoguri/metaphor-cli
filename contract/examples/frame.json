@@ -54,5 +54,10 @@
     "memoryMB" : 412.3,
     "cpuPercent" : 87.5,
     "thermalState" : "nominal"
+  },
+  "shaders" : {
+    "generation" : 2,
+    "digest" : "9f2c4a1b7d3e5081",
+    "lastError" : "waveFragment (/abs/path/wave.metal): program_source:12:9: error: use of undeclared identifier 'wobble'"
   }
 }

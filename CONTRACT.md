@@ -57,7 +57,7 @@
 
 - **現行 = `schemaVersion: 4`**。トップレベルキー: `schemaVersion` / `id` / `label?` /
   `sourceStamp?` / `frame` / `time` / `size{width,height}` / `custom{}` / `customTypes{}` /
-  `warnings[]` / `stats?` / `performance?`。
+  `warnings[]` / `stats?` / `performance?` / `params?` / `shaders?`。
 - `stats`（v2 で追加）= `meanColor[3]` / `meanLuminance` / `contentFraction` /
   `contentBounds?{x,y,width,height}`（正規化・原点左上、blank 時省略） / `sampleGrid`。
 - `customTypes`（v3 で追加）= `custom` の各キー → 型タグ（`double` / `int` / `string` /
@@ -87,6 +87,22 @@
   宣言されていないスケッチではキー省略。**単一フレーム経路と連続キャプチャの両方**に
   載る（メモリ内の読み取りのみで syscall が無く、シーケンス中に外部が値を変えた
   フレームを `revision` で切り分けられる）。失敗応答では省略。
+- `shaders`（`schemaVersion: 4` のまま additive 追加、Issue #671）= このフレームを描いた
+  **ファイル由来シェーダのホットリロード世代**。`sourceStamp` はプロセス起動時に固定される
+  ため、`.metal` の保存が**再起動なしで**絵を変えるホットリロード（metaphor #648）を刻印で
+  追えない。ここは**差し替えが着地した後にしか動かない**世代情報を載せる。
+  `generation`（起動からの着地回数。差し替えが 1 つでも成功したリロードごとに +1。単調増加
+  なので「編集して元に戻す」でも取りこぼさないが、プロセス再起動で 0 に戻る）/ `digest`
+  （いま載っているファイル由来シェーダ全体の集約ハッシュ。内容由来なので**再起動をまたいで**
+  比較できる。**consumer は不透明な識別子として等値比較のみ**行い、長さや算出法に依存しない）
+  / `lastError?`（直近のリロードのコンパイルエラー。全て成功していれば省略）。
+  **ファイル由来のシェーダが 1 つも無いスケッチ**（ホットリロード無効時を含む）ではキー省略。
+  **単一フレーム経路と連続キャプチャの両方**に載る。失敗応答では省略。
+  - **consumer 手順（保存 → 反映の機械検出）**: ① snapshot して `shaders.generation` を控える
+    → ② `.metal` を保存 → ③ snapshot をポーリングし、`generation` が進んだら**着地**、
+    `lastError` が出たら**コンパイル失敗**（直して保存し直す）、どちらでもなければまだ窓の中。
+    デバウンスやコンパイル中に値が動かないため「新しい刻印・古い描画」の偽陽性が出ない。
+    リビルド → 再起動を伴う `.swift` 側の編集は従来どおり `sourceStamp` で判定する。
 - **consumer 規約**: 未知のキーは無視する。`metaphor-cli` の MCP サーバは
   `frame.json` を **verbatim 透過**するため、additive なフィールド追加では cli の
   コード変更は不要（将来 cli が個別フィールドを解釈し始めたら本表に追記する）。

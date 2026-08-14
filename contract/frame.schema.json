@@ -161,6 +161,28 @@
           "enum": ["nominal", "fair", "serious", "critical", "unknown"]
         }
       }
+    },
+    "shaders": {
+      "description": "このフレームを描いたファイル由来シェーダのホットリロード世代。sourceStamp はプロセス起動時に固定されるため、.metal を保存して再起動なしに絵が変わるホットリロード (#648) を追えない。ここは差し替えが着地した後にしか動かない世代情報を載せ、consumer が「保存 -> 反映」の完了を機械検出できるようにする。ファイル由来のシェーダが 1 つも無いスケッチ (ホットリロード無効時を含む) ではキー省略。単一フレーム経路と連続キャプチャの両方に載る (メモリ内の読み取りのみで syscall が無いため)。失敗応答では省略。schemaVersion 4 のまま additive 追加 (Issue #671)。",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generation", "digest"],
+      "properties": {
+        "generation": {
+          "description": "スケッチ起動からの着地回数 (差し替えが 1 つでも成功したリロードごとに +1)。単調増加なので「編集して元に戻す」でも変化を取りこぼさない。プロセス再起動で 0 に戻るため、再起動をまたぐ比較には digest か sourceStamp を使う。",
+          "type": "integer",
+          "minimum": 0
+        },
+        "digest": {
+          "description": "いまライブラリに載っているファイル由来シェーダ全体の集約ハッシュ (16 進小文字)。内容由来なのでプロセスをまたいで比較できる。値の長さ・算出法は producer 実装の裁量 (consumer は不透明な識別子として等値比較のみ行う)。",
+          "type": "string",
+          "minLength": 1
+        },
+        "lastError": {
+          "description": "直近のリロードで出たコンパイルエラー (長い場合は producer が末尾を切る)。全て成功していればキー省略。「まだ反映されていない」と「壊れていて反映されない」を consumer が区別し、タイムアウトまで待たずに済ませるためのシグナル。",
+          "type": "string"
+        }
+      }
     }
   }
 }
