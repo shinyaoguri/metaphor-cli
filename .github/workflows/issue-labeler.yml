@@ -1,0 +1,92 @@
+name: Issue labeler
+
+# 立った Issue にラベルが付いていなければ、タイトルの型から決めて付ける
+# （Issue #127。設計の経緯は shinyaoguri/metaphor#663 が正本）。
+#
+# 無ラベルの Issue が 15 件溜まったのは付け忘れではなく、起票の入口が 2 系統
+# あって片方だけ塞がっているため:
+#
+#   Issue テンプレート (Web UI) -> `.github/ISSUE_TEMPLATE/*.md` の
+#                                  `labels:` が効くので付く
+#   `gh issue create` (AI・CLI) -> テンプレートを通らないので何も付かない
+#
+# 後者は AI が使う経路で、起票の時点で塞ぐ手立てが無い。だから「立った後で
+# 付ける」ここが受け皿になる。写像とラベル体系の正本は
+# `scripts/label-issues.py`（溜まった分を片付ける `--backfill` も同じ写像を
+# 使うので、二重定義にならない）。ラベルは metaphor と揃えてある。
+#
+# **人が付けたラベルは絶対に触らない。** 動くのは次の 2 つの場合だけ:
+#
+#   1. ラベルが 1 枚も無い            -> 判定して付ける
+#   2. `status: needs-triage` だけ    -> 判定し直し、決まったら差し替える
+#
+# 2 があるのは、型が読めずに triage へ落ちた Issue をタイトルの修正だけで
+# 回収できるようにするため。そのためにタイトルはイベントの payload ではなく
+# 実行時に API から引く（`edited` の payload は変更前のタイトルを含むことが
+# ある）。こちらは metaphor よりタイトルの揺れが大きく、`new:` や `CLI:` の
+# ように型でないものが型の位置に来るため、この回収経路がよく効く。
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+concurrency:
+  # 同じ Issue を続けて編集したときに、古い方の判定が後から書き込むのを防ぐ。
+  group: issue-labeler-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Label the issue from its title
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+
+          TRIAGE='status: needs-triage'
+
+          # 改行区切りで現在のラベルを取る。0 枚なら空文字になる。
+          CURRENT=$(gh issue view "$ISSUE_NUMBER" --json labels --jq '.labels[].name')
+
+          # 空でも triage 単独でもないなら、人かテンプレートが付けたもの。触らない。
+          if [ -n "$CURRENT" ] && [ "$CURRENT" != "$TRIAGE" ]; then
+            echo "既にラベルがあるので何もしません:"
+            printf '  %s\n' "$CURRENT"
+            exit 0
+          fi
+
+          TITLE=$(gh issue view "$ISSUE_NUMBER" --json title --jq '.title')
+          echo "Issue title: ${TITLE}"
+
+          LABEL=$(python3 scripts/label-issues.py --title "$TITLE")
+          echo "判定: ${LABEL}"
+
+          if [ "$LABEL" = "$CURRENT" ]; then
+            echo "判定が変わらないので何もしません。"
+            exit 0
+          fi
+
+          ARGS=(--add-label "$LABEL")
+          if [ -n "$CURRENT" ]; then
+            # triage 単独だった場合だけここに来る（上で他を弾いている）。
+            ARGS+=(--remove-label "$CURRENT")
+          fi
+          gh issue edit "$ISSUE_NUMBER" "${ARGS[@]}"
+
+          if [ "$LABEL" = "$TRIAGE" ]; then
+            echo "::notice::タイトルから型を読めませんでした。'${TRIAGE}' を付けたので、"\
+                 "タイトルを '<type>(<scope>): <要約>' に直すか、手でラベルを付けてください。"
+          fi

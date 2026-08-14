@@ -2,7 +2,7 @@
 name: バグ報告
 about: metaphor コマンドの想定外の挙動を報告する
 title: 'fix: '
-labels: bug
+labels: "type: bug"
 ---
 
 ## 症状

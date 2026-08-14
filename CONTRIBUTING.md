@@ -17,6 +17,34 @@
 迷ったらこちらに立ててもらえれば振り分けます。バグ報告には `metaphor doctor` の出力を
 添えてください（環境情報がまとまっています）。
 
+### Issue のタイトルとラベル
+
+Issue のタイトルは PR と同じ [Conventional Commits](https://www.conventionalcommits.org/)
+の形（`<type>(<scope>): <要約>`）で書いてください。**立てた時点で自動的にラベルが付きます。**
+テンプレート（とその `labels:`）を通らない `gh issue create` で立てるときに、特に効きます。
+
+| 型 | ラベル |
+| --- | --- |
+| `fix` | `type: bug` |
+| `feat` / `api` | `type: feature` |
+| `docs` | `type: docs` |
+| `design`（実装の前に方針を決める検討） | `type: design` |
+| `chore` / `ci` / `test` / `refactor` / `build` / `perf` | `type: maintenance` |
+
+ラベルは次元ごとに分かれていて、`type:` が「何の Issue か」、`status:` が「いまどうなって
+いるか」を表します。1 つの Issue に付くのはそれぞれ 1 枚までです。
+
+`new:` や `templates:` のようにコマンド名・対象を型の位置に書くと型として扱われません
+（それらは scope なので `fix(new): ...` と書いてください）。型を読めなかった Issue には
+`status: needs-triage` が付いて人が見ます。**何も失われないので、書き方に迷っても
+そのまま立ててください。** 後からタイトルを直せば判定し直され、ラベルも入れ替わります。
+
+写像は [`scripts/label-issues.py`](scripts/label-issues.py) にあり、
+[`.github/workflows/issue-labeler.yml`](.github/workflows/issue-labeler.yml) が適用します。
+ラベル体系は metaphor 側と揃えてあり（設計の経緯は
+[metaphor#663](https://github.com/shinyaoguri/metaphor/issues/663)）、
+**人が付けたラベルには一切触りません**。
+
 ## 開発環境
 
 - Apple Silicon Mac / macOS 14+、Xcode 15+ / Swift 5.10+
