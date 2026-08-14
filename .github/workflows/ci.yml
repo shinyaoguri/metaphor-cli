@@ -28,6 +28,11 @@ jobs:
         run: ./scripts/check-contract-identity.sh
       - name: Check template freshness
         run: ./scripts/check-templates.sh
+      - name: Test scripts
+        # scripts/ 配下の Python の単体テスト。Swift の `swift test` とは別に
+        # ここで走らせる（Issue #127 で `label-issues.py` を足したときに、
+        # テストを置いても走る場所が無いことが分かった）。
+        run: python3 -m unittest discover -s scripts/tests
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_26.4.app
       - name: Build

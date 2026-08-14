@@ -2,7 +2,7 @@
 name: 提案・気付き
 about: 改善アイデア・ドキュメント不備・小さな違和感を作業を止めずに残す
 title: ''
-labels: enhancement
+labels: "type: feature"
 ---
 
 ## 気付いたこと
