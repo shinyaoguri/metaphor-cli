@@ -28,8 +28,12 @@
   `llms-sketch.txt` / `docs/ai/`）を提供する。下表の **producer（定義側）**。
 - **metaphor-cli**（`metaphor` コマンド／ライブビューア）: それらを束ねる開発ツール。
   スキャフォールド・watch・ライブビューアに加え、ライブラリの観測／操作能力を
-  **MCP サーバ**（`snapshot` / `capture_sequence` / `input` / `build_status` / `api_reference`）
-  として AI エージェントへ露出する。下表の **consumer（依存側）**。
+  **MCP サーバ**（`snapshot` / `capture_sequence` / `input` / `params` / `set_param` /
+  `build_status` / `api_reference` の 7 ツール）として AI エージェントへ露出する。
+  下表の **consumer（依存側）**。`params` / `set_param` は契約点 7（Parameter Store）の
+  consumer で、共有セッション（`metaphor watch` へアタッチ）でも有効——ファイル契約なので
+  子の stdin を watch が所有していても使える。stdin 経由の `input` だけが共有セッションで
+  無効になる。
 
 > **「AI と協調する」機能は、どちらか一方ではなく両者の分担で成り立つ。** 観測・操作・
 > 静的ドキュメントという *能力* は `metaphor` が所有し、`metaphor-cli` はそれを MCP という
