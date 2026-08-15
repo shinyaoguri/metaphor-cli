@@ -93,11 +93,8 @@ public struct MCPCommand {
                 processRunner: FoundationProcessRunner(),
                 launcher: FoundationProcessLauncher(),
                 watcher: FSEventsFileWatcher(directory: directory),
-                extraEnvironment: [
-                    "METAPHOR_VIEWER": "1",   // ヘッドレス + タイマー駆動
-                    "METAPHOR_PROBE": "1",    // Probe を自動登録
-                    "METAPHOR_SYPHON_NAME": syphonName,
-                ],
+                extraEnvironment: Self.childEnvironment(
+                    for: directory, syphonName: syphonName),
                 captureBuildOutput: true   // build_status 用にビルド出力を捕捉
             )
 
@@ -125,6 +122,26 @@ public struct MCPCommand {
         }
 
         runServer(handler: handler, outputHandle: outputHandle, directory: directory)
+    }
+
+    /// 単独モードで spawn する子スケッチへ渡す環境変数。
+    ///
+    /// `.metaphor/` の基準（契約点 2）は `run` / `watch` と同じく**解決済みの絶対パス**で
+    /// 渡す。子の cwd は `sketch-dir` になるため、相対指定の `METAPHOR_STATE_DIR` を
+    /// そのまま継承させると cli（consumer）と子（producer）が別の場所を見てしまう。
+    /// `METAPHOR_STATE_DIR` 未指定なら `sketch-dir` が基準（= `<dir>` 引数より環境変数が優先）。
+    static func childEnvironment(
+        for directory: URL,
+        syphonName: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [String: String] {
+        [
+            "METAPHOR_VIEWER": "1",   // ヘッドレス + タイマー駆動
+            "METAPHOR_PROBE": "1",    // Probe を自動登録
+            "METAPHOR_SYPHON_NAME": syphonName,
+            "METAPHOR_STATE_DIR": MetaphorStateDirectory
+                .base(for: directory, environment: environment).path,
+        ]
     }
 
     /// MCP ハンドシェイク（`initialize` 応答の `serverInfo.version`）で名乗る版。
@@ -181,6 +198,9 @@ public struct MCPCommand {
       api_reference     依存先 metaphor の API ドキュメント(llms.txt 等)を返す
 
     引数を省略するとカレントディレクトリのスケッチを対象にする。
+
+    .metaphor/(snapshot / params の置き場)の基準は環境変数 METAPHOR_STATE_DIR が
+    優先する。未指定なら sketch-dir が基準。
     """
 }
 
