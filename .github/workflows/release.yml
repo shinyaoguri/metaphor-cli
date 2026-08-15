@@ -107,10 +107,20 @@ jobs:
             exit 1
           fi
 
+      # The binary's own version comes from this constant, so a stamp that
+      # silently misses ships a release naming the wrong version. Anchor the
+      # match to the declaration at the start of a line (a doc comment quoting
+      # the declaration used to win, since -0p replaces only the first match),
+      # then verify the declaration actually carries the tag before building.
       - name: Stamp version
         run: |
           set -euo pipefail
-          perl -0pi -e "s/public static let version = \"[^\"]+\"/public static let version = \"${VERSION}\"/" Sources/MetaphorCLICore/BuildInfo.swift
+          perl -0pi -e "s/^    public static let version = \"[^\"]+\"\$/    public static let version = \"${VERSION}\"/m" Sources/MetaphorCLICore/BuildInfo.swift
+          if ! grep -qxF "    public static let version = \"${VERSION}\"" Sources/MetaphorCLICore/BuildInfo.swift; then
+            echo "::error::Stamping BuildInfo.version to ${VERSION} did not take effect."
+            grep -n 'public static let version' Sources/MetaphorCLICore/BuildInfo.swift || true
+            exit 1
+          fi
 
       # Pin BuildInfo.defaultMetaphorVersion to the latest stable metaphor
       # library tag so that `metaphor new` has a sensible offline fallback
@@ -192,7 +202,17 @@ jobs:
           set -euo pipefail
           PREFIX_DIR="$(mktemp -d)"
           ARCHIVE="$PWD/dist/${ASSET}" PREFIX="$PREFIX_DIR" bash scripts/install.sh
-          "$PREFIX_DIR/bin/metaphor" version
+          # What the user will actually see. The stamp check above guards the
+          # source; this guards the artifact, whatever the reason it went wrong.
+          INSTALLED_VERSION="$("$PREFIX_DIR/bin/metaphor" version)"
+          echo "$INSTALLED_VERSION"
+          case "$INSTALLED_VERSION" in
+            "metaphor-cli ${VERSION} "*) ;;
+            *)
+              echo "::error::Installed binary reports '${INSTALLED_VERSION}', expected version ${VERSION}."
+              exit 1
+              ;;
+          esac
           test -L "$PREFIX_DIR/bin/metaphor"
           test -d "$PREFIX_DIR/libexec/metaphor/Syphon.framework"
           echo "install.sh end-to-end smoke passed."
