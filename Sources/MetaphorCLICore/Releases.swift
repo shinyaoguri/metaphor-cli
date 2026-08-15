@@ -58,15 +58,27 @@ public protocol HTTPClient {
 
 public final class URLSessionHTTPClient: HTTPClient {
     private let timeout: TimeInterval
+    private let userAgentVersion: String
 
-    public init(timeout: TimeInterval = 60) {
+    /// - Parameter userAgentVersion: User-Agent で名乗る版。既定は実行中ビルドを
+    ///   特定できる `BuildInfo.displayVersion`（`BuildInfo.version` は stamp 前だと
+    ///   全ビルドが同じプレースホルダを名乗ってしまう）。
+    public init(timeout: TimeInterval = 60, userAgentVersion: String = BuildInfo.displayVersion) {
         self.timeout = timeout
+        self.userAgentVersion = userAgentVersion
+    }
+
+    /// GitHub API 用のリクエスト。`get` から切り出してあるのは、送る前のヘッダを
+    /// テストから検証できるようにするため。
+    func makeRequest(for url: URL) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.setValue("metaphor-cli/\(userAgentVersion)", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        return request
     }
 
     public func get(_ url: URL) throws -> Data {
-        var request = URLRequest(url: url)
-        request.setValue("metaphor-cli/\(BuildInfo.version)", forHTTPHeaderField: "User-Agent")
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        let request = makeRequest(for: url)
 
         let semaphore = DispatchSemaphore(value: 0)
         var result: Result<Data, Error>?
