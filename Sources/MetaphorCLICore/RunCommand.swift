@@ -100,6 +100,10 @@ public struct RunCommand {
             // Probe を有効化してメトリクスの供給元（frame.json の performance）を作る。
             envAssignments.append("METAPHOR_PROBE=1")
         }
+        // `.metaphor/` の基準ディレクトリを解決済みの絶対パスで子へ渡す（契約点 2）。
+        // 子の cwd に依存せず、cli 自身が見る場所と一致させるため。
+        envAssignments.append(
+            "METAPHOR_STATE_DIR=" + MetaphorStateDirectory.base(for: currentDirectory).path)
 
         // swift run（ビルド含む）が同期ブロックする間、ポーラーは GCD タイマーで
         // 並走する。ビルド中・起動前は「応答待ち」表示になるだけで害はない。

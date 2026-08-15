@@ -47,13 +47,36 @@
 | # | 契約 | producer（定義側） | consumer（依存側） |
 |---|---|---|---|
 | 1 | **Syphon.xcframework の Release pin**<br>URL `…/releases/download/<tag>/Syphon.xcframework.zip` + SHA256 checksum | `metaphor` が Release で発行（`release.yml`） | `metaphor-cli/Package.swift` の `binaryTarget` |
-| 2 | **環境変数**<br>`METAPHOR_VIEWER` / `METAPHOR_SYPHON_NAME` / `METAPHOR_FPS` / `METAPHOR_PROBE` / `METAPHOR_SOURCE_STAMP` | `metaphor` が読む（`SketchRunner.swift`、`METAPHOR_SOURCE_STAMP` は `MetaphorProbePlugin.swift`） | `metaphor-cli` が設定（`ViewerWatch.swift` / `Watch.swift`） |
+| 2 | **環境変数**<br>`METAPHOR_VIEWER` / `METAPHOR_SYPHON_NAME` / `METAPHOR_FPS` / `METAPHOR_PROBE` / `METAPHOR_SOURCE_STAMP` / `METAPHOR_STATE_DIR` | `metaphor` が読む（`SketchRunner.swift`、`METAPHOR_SOURCE_STAMP` は `MetaphorProbePlugin.swift`、`METAPHOR_STATE_DIR` は `MetaphorPaths.swift`） | `metaphor-cli` が設定（`ViewerWatch.swift` / `Watch.swift`） |
 | 3 | **stdin 入力イベント（JSON Lines）**<br>キー `t` の値 `mouseDown` `mouseUp` `mouseMove` `mouseDrag` `scroll` `keyDown` `keyUp`、フィールド `x` `y` `button` `code` `chars` `repeat` `dx` `dy` | `metaphor` が解析（`InputInjectionPlugin.swift`） | `metaphor-cli` が送出（`ViewerWindow.swift`） |
 | 4 | **Probe ファイル契約**<br>`.metaphor/probe/request.json`（リクエスト）/ `.metaphor/probe/current/frame.{png,json}`（単一フレーム出力）/ `.metaphor/probe/current/sequence/`（連続フレーム出力）と `frame.json` / `sequence.json` スキーマ、`ProbeRequest` のフィールド（`id` / `label` / `scale` / `frames` / `every`） | `metaphor`（`MetaphorProbeConfig.swift` / `ProbeFrameMetadata.swift` / `ProbeSequenceManifest.swift` / `ProbeRequest.swift`） | AI エージェント・ツール（`metaphor-cli` の `snapshot` / `capture_sequence`） |
 | 5 | **Syphon サーバー名 / headless 挙動**<br>`METAPHOR_VIEWER=1` で `METAPHOR_SYPHON_NAME` のサーバーへ publish | `metaphor` headless モード（`SketchRunner.swift`） | `metaphor-cli`（`SyphonFrameSource.swift`） |
 | 6 | **AI ドキュメントのパス/ファイル名**<br>`llms.txt` / `llms-sketch.txt` / `docs/ai/examples-index.{md,json}` | `metaphor` が用意（`llms.txt` / `examples-index` は生成物＝`make llms-txt` / `make examples-index`、`llms-sketch.txt` は**手書き**。いずれもリポジトリにコミット） | `metaphor-cli` の MCP `api_reference` ツール（`MetaphorDocsLocator.swift` / `SketchToolHandler.swift`） |
 | 7 | **Parameter Store ファイル契約**<br>`.metaphor/params/params.json`（現在値 + 宣言情報の出力）/ `.metaphor/params/set-request.json`（外部からの更新要求）と `params.schema.json` / `param-set-request.schema.json`、環境変数 `METAPHOR_PARAMS`（`0` でオプトアウト） | `metaphor`（`Sources/MetaphorCore/Parameters/` の `ParameterPlugin.swift` / `ParameterFile.swift` / `ParameterStore.swift`） | AI エージェント・ツール（`metaphor-cli` の `params` / `set_param` MCP ツール = `MCP/ParameterStoreTool.swift`） |
 | 8 | **状態保持リロードのファイル契約**<br>`.metaphor/state/state.json`（保存された状態）/ `.metaphor/state/save-request.json`（外部からの保存要求）と `state.schema.json` / `state-save-request.schema.json`、環境変数 `METAPHOR_STATE`（`1` で明示有効・`0` でオプトアウト）/ `METAPHOR_RESTORE_STATE`（復元元のパス） | `metaphor`（`Sources/MetaphorCore/State/` の `StatePlugin.swift` / `SketchStateFile.swift`） | `metaphor-cli` の watch（リビルド時の保存 → 再起動時の注入） |
+
+### `.metaphor/` の基準ディレクトリ `METAPHOR_STATE_DIR`（契約点 2 / 4 / 7 / 8 の補足）
+
+`.metaphor/probe/`（契約点 4）・`.metaphor/params/`（契約点 7）・`.metaphor/state/`（契約点 8）は
+**プロセスの cwd 相対**で解決されます。`swift run` ならプロジェクト直下が cwd になるので
+問題ありませんが、**`.app` を LaunchServices から起動すると cwd が `/`** になり、
+どれも書けない場所を向きます（常設運用に近い形 — `open` で起動 / ログイン項目 / Dock から
+起動 — で Probe の応答が返らない・パラメータが永続化されない）。
+
+環境変数 `METAPHOR_STATE_DIR` に基準ディレクトリを与えると、**相対パスはそこから**
+解決されます。
+
+- **producer（metaphor）**: Probe / Parameter Store / State の 3 つが同じ基準を見る
+  （`Sources/MetaphorCore/Utilities/MetaphorPaths.swift`）。プロセス起動時に 1 度だけ評価する
+- **consumer（metaphor-cli）**: 同じ変数を尊重して `.metaphor/` を探す。`run` / `watch` は
+  子プロセスへそのまま渡す
+- **未設定なら従来どおり cwd 相対**（既定の挙動は変わらない・additive な追加）
+- 値が相対パス・`~` 始まりのときは、読み取り側の cwd 基準で絶対化してから使う
+- 絶対パスで与えた個別の設定（`MetaphorProbeConfig.outputDirectory` など）は影響を受けない
+
+```bash
+open -n .build/strata.app --env METAPHOR_PROBE=1 --env "METAPHOR_STATE_DIR=$PWD"
+```
 
 ### `frame.json` スキーマのバージョニング（契約点 4 の補足）
 

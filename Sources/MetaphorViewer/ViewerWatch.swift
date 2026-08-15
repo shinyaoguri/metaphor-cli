@@ -53,6 +53,10 @@ public func runViewerWatch(
     if let fps {
         childEnvironment["METAPHOR_FPS"] = String(fps)
     }
+    // `.metaphor/` の基準ディレクトリを**解決済みの絶対パスで**子へ渡す（契約点 2）。
+    // 子の cwd に依存せず producer と consumer が同じ場所を見るようにするため
+    // （`.app` から起動すると cwd が `/` になる。metaphor#688 / #133）。
+    childEnvironment["METAPHOR_STATE_DIR"] = MetaphorStateDirectory.base(for: directory).path
 
     let session = WatchSession(
         directory: directory,

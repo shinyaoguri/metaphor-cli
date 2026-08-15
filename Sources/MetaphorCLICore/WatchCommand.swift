@@ -197,6 +197,9 @@ public struct WatchCommand {
         if let fps = parsed.fps {
             environment["METAPHOR_FPS"] = String(fps)
         }
+        // `.metaphor/` の基準ディレクトリを解決済みの絶対パスで子へ渡す（契約点 2）。
+        environment["METAPHOR_STATE_DIR"] =
+            MetaphorStateDirectory.base(for: currentDirectory).path
 
         // 長時間つけっぱなしになるログなので時刻を付ける（ヘルプは上で早期 return
         // 済みなので、整形済みの使い方テキストには付かない）。
