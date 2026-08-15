@@ -417,6 +417,11 @@ AI エージェントで作業する場合の起点は [AGENTS.md](AGENTS.md)、
 - **AI クライアントが MCP サーバに接続できない** — `.mcp.json` / `claude mcp add` の登録は **PATH 上の `metaphor`** を起動します。`which metaphor` で CLI が見つかるか確認してください（brew 未導入の環境や direnv での開発版⇄brew 版切替中は、見つからず黙って失敗することがあります）。
 - **`metaphor` がローカル開発版か brew 版か分からない** — `command -v metaphor` で実体パスを確認。direnv の設定は [DEVELOPMENT.md](DEVELOPMENT.md) を参照。
 - **`metaphor update` が固まる** — GitHub への通信待ち（最大 60 秒でタイムアウト）。ネットワーク到達性を確認してください。Homebrew 導入版は `brew upgrade` を案内します。
+- **`.app` に包んだスケッチで snapshot / params が効かない** — `.app` を LaunchServices（`open` / Dock / ログイン項目）から起動すると **cwd が `/`** になり、スケッチが `.metaphor/` を書けない場所に作ろうとします。`METAPHOR_STATE_DIR` に置き場を渡してください（`metaphor run` / `metaphor watch` 経由なら自動で渡ります）。
+
+  ```bash
+  open -n .build/MySketch.app --env METAPHOR_PROBE=1 --env "METAPHOR_STATE_DIR=$PWD"
+  ```
 
 ## フィードバック / Issue 報告
 
