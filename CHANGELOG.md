@@ -1,40 +1,38 @@
 # Changelog
 
-`metaphor-cli` の変更履歴。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)、
+**`metaphor-cli` の変更履歴の正本は
+[Releases](https://github.com/shinyaoguri/metaphor-cli/releases) です。**
+このファイルは正本へのポインタと、v0.5.1 までの手書き要約のアーカイブで、**以降は追記しません**。
+
+```bash
+gh release list          # 版の一覧
+gh release view          # 最新版の変更点（<tag> を渡せばその版）
+```
+
+版と版の差分は
+`https://github.com/shinyaoguri/metaphor-cli/compare/<古い tag>...<新しい tag>`
+の形で引けます。
+
+## なぜ人手の CHANGELOG をやめたか
+
+本リポジトリは **PR のマージだけでリリースが走ります**（`.github/workflows/release-on-merge.yml`）。
+人間が「これからリリースする」と意識する瞬間が無いため、[Keep a Changelog](https://keepachangelog.com/ja/1.1.0/)
+の `Unreleased` → 版節という**昇格工程を挿す場所がありません**。
+
+実際、追記そのものは行われていたのに昇格だけが落ち、最後の版節が `0.5.1` のまま
+**10 版ぶん**放置されました。出荷済みの機能が `Unreleased`（= 未リリース）に見えるせいで、
+「この MCP ツールはリリース版で使えるのか」に答えられず `git tag --contains` を引く、
+という実害も出ています。「CHANGELOG があるのに古い」は「CHANGELOG が無い」より悪いので、
+二重管理をやめて Releases に一本化しました
+（[#97](https://github.com/shinyaoguri/metaphor-cli/issues/97)）。
+
+CI がこの方針を機械的に守ります（`.github/workflows/ci.yml` の
+"Check CHANGELOG stays a pointer"）。版節や `Unreleased` を書き戻すと落ちます。
+
+## アーカイブ — v0.5.1 まで（手書き要約。以降は追記しない）
+
 バージョンは [Semantic Versioning](https://semver.org/lang/ja/) に従います。
-
-各版のコミット単位の一覧は [Releases](https://github.com/shinyaoguri/metaphor-cli/releases)
-が自動生成しています。このファイルは**利用者に見える変化**だけを人手で要約したものです。
-
-## [Unreleased]
-
-### 追加
-
-- `metaphor version` が**環境の版一覧**になった。CLI 本体に加えて、いるディレクトリで
-  解決されている `metaphor` ライブラリの版も出す（ネットワークは叩かない。最新かどうかは
-  従来どおり `metaphor update check` の担当）
-  - CLI 行が `metaphor …` から `metaphor-cli …` になり、ライブラリ版との取り違えが消えた
-  - ライブラリ行は `0.9.0 (Package.resolved)` / `local path ../metaphor` /
-    未解決（スケッチ外）の 3 通り
-  - `metaphor version --json` を追加。CI・AI エージェント向けにキーが常にそろった
-    JSON を出す（当てはまらない値は `null`）
-  - `metaphor doctor` も冒頭で同じ 2 行を出す
-- `watch` のリロードで**子スケッチの状態を運ぶ**（契約点 8）。再ビルド後に子を
-  作り直す前へ保存要求を挟み、書き上がった `state.json` を次の子へ
-  `METAPHOR_RESTORE_STATE` で渡す
-  - スケッチ側が `saveState()` / `restoreState(_:)` を実装していれば
-    シミュレーションの状態が、`SketchConfig(preserveClock: true)` なら
-    `frameCount` / `time` が編集をまたいで続く（metaphor v0.9 以降）
-  - 保存の待ち時間は最大 250ms で、応答が無ければ状態なしでリロードを進める。
-    一度も応答が無かったセッションでは以降の要求自体を止めるため、状態保持を
-    使っていないスケッチのリロードは従来どおりの速さのまま
-- MCP に `params` / `set_param` ツールを追加。スケッチが `@Param` で宣言した値を
-  AI エージェントが一覧し、**再ビルドなしで**（ファイル往復 1 フレームで）書き換えられる
-  - 人間の GUI スライダーと同一のストアを操作する（競合は last-writer-wins）。
-    stdin を経由しないため、`metaphor watch` にアタッチした共有セッションでも使える
-    （`input` は単独モード限定のまま）
-  - 拒否（未知の名前・型不一致・`choices` 外）は理由つきでエラーとして返る。
-    数値は宣言された `min` / `max` へクランプされる
+**v0.6.0 以降はここに現れません**（Releases を参照）。
 
 ## [0.5.1] - 2026-08-01
 
@@ -116,7 +114,6 @@
 - 初回リリース。`new` によるテンプレートからのプロジェクト生成、`run`、`update`、
   Homebrew 対応のリリースフロー
 
-[Unreleased]: https://github.com/shinyaoguri/metaphor-cli/compare/v0.5.1...HEAD
 [0.5.1]: https://github.com/shinyaoguri/metaphor-cli/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/shinyaoguri/metaphor-cli/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/shinyaoguri/metaphor-cli/compare/v0.3.0...v0.4.0

@@ -28,6 +28,31 @@ jobs:
         run: ./scripts/check-contract-identity.sh
       - name: Check template freshness
         run: ./scripts/check-templates.sh
+      - name: Check CHANGELOG stays a pointer
+        # 変更履歴の正本は Releases で、CHANGELOG.md は v0.5.1 までのアーカイブに
+        # 凍結してある（#97）。マージごとに自動リリースが走る本リポには
+        # `Unreleased` → 版節の昇格工程を挿す場所が無く、人手の追記は必ず陳腐化する
+        # （実際に 10 版ぶん放置された）。親切心で版節を書き戻す人間・エージェントを
+        # 文書ルールだけでは止められないので、版見出しの集合を固定して機械的に守る。
+        run: |
+          set -euo pipefail
+          if grep -qF '## [Unreleased]' CHANGELOG.md; then
+            echo "::error file=CHANGELOG.md::CHANGELOG.md に [Unreleased] 節があります。変更履歴の正本は GitHub Releases です（#97）。リリースノートは release.yml が自動生成するので、このファイルには追記しないでください。"
+            exit 1
+          fi
+          if ! diff -u - <(grep -E '^## \[' CHANGELOG.md) <<'EOF'; then
+          ## [0.5.1] - 2026-08-01
+          ## [0.5.0] - 2026-07-20
+          ## [0.4.0] - 2026-07-18
+          ## [0.3.0] - 2026-07-03
+          ## [0.2.0] - 2026-07-01
+          ## [0.1.1] - 2026-05-08
+          ## [0.1.0] - 2026-05-08
+          EOF
+            echo "::error file=CHANGELOG.md::CHANGELOG.md の版見出しが凍結されたアーカイブ（v0.5.1 まで）と一致しません。変更履歴の正本は GitHub Releases です（#97）。上が期待値、下が実際です。"
+            exit 1
+          fi
+          echo "CHANGELOG.md is frozen at the v0.5.1 archive (source of truth: GitHub Releases)."
       - name: Test scripts
         # scripts/ 配下の Python の単体テスト。Swift の `swift test` とは別に
         # ここで走らせる（Issue #127 で `label-issues.py` を足したときに、

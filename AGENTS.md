@@ -12,6 +12,8 @@ AI エージェント向け MCP サーバ（`mcp`）・環境診断（`doctor`�
 - **DEVELOPMENT.md** — CLI 開発者向け。プロジェクト構成・新規コマンド/MCP ツール追加・direnv 切替・テンプレート編集
 - **CONTRACT.md** — metaphor ⇄ metaphor-cli のクロスリポ契約（両リポに同一内容）
 - **docs/homebrew.md** — Homebrew tap / Formula のリリース手順
+- **CHANGELOG.md** — 変更履歴の正本は [Releases](https://github.com/shinyaoguri/metaphor-cli/releases)。
+  このファイルは正本へのポインタと v0.5.1 までのアーカイブで**凍結**（追記すると CI が落ちる。理由は #97）
 - **AGENTS.md（本ファイル）** — エージェント作業の起点。`CLAUDE.md` は本ファイルを import する薄いラッパー
 
 ## Build / Test
