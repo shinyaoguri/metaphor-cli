@@ -4,13 +4,13 @@ public enum BuildInfo {
     public static let name = "metaphor"
 
     /// CLI 自身の版。リリースビルドでは `release.yml` の "Stamp version" が
-    /// この行（`public static let version = "..."`）をタグの版へ書き換える。
+    /// 次の行をタグの版へ書き換える（行頭からの定義にだけ当たる正規表現なので、
+    /// このコメントに定義の形を書き写さないこと）。
     public static let version = "0.1.0-dev"
 
     /// stamp 前のプレースホルダ。`version` がこの値のままなら未 stamp = 開発ビルド。
-    /// リテラルが 2 か所に並ぶのは意図的で、`release.yml` の置換は
-    /// `public static let version = "..."` にだけ当たるようにしてある
-    /// （こちらを `version` の別名にすると stamp が判定不能になる）。
+    /// 同じリテラルが 2 か所に並ぶのは意図的で、こちらを `version` の別名にすると
+    /// stamp 後も両者が等しくなり、stamp の有無を判定できなくなる。
     static let unstampedVersion = "0.1.0-dev"
 
     public static let defaultMetaphorVersion = "0.5.3"
