@@ -132,6 +132,76 @@ final class MetaphorCLITests: XCTestCase {
         }
     }
 
+    func testCommonTemplatesShipEditorConfiguration() throws {
+        try withSourceTemplates {
+            let catalog = try TemplateCatalog.loadDefault()
+            let context = TemplateContext(
+                projectName: "Demo",
+                moduleName: "Demo",
+                template: try XCTUnwrap(catalog.templates.first),
+                metaphorDependency: ".package(path: \"/Users/so/Repos/metaphor\")",
+                metaphorPackageIdentity: "metaphor",
+                metaphorAIDocsPath: "/Users/so/Repos/metaphor"
+            )
+            let files = try TemplateRenderer.files(for: context, catalog: catalog)
+
+            // 生成物のエディタ設定は VSCode / sourcekit-lsp が直接読むので、
+            // JSON として壊れていたら黙って無視される（＝気付けない）。構文と
+            // 中身の要点をここで押さえる。
+            func json(at path: String) throws -> [String: Any] {
+                let file = try XCTUnwrap(files.first { $0.path == path }, "template should generate \(path)")
+                let data = try XCTUnwrap(file.contents.data(using: .utf8))
+                return try XCTUnwrap(
+                    JSONSerialization.jsonObject(with: data) as? [String: Any],
+                    "\(path) should be a JSON object"
+                )
+            }
+
+            let tasks = try json(at: ".vscode/tasks.json")
+            let labels = (tasks["tasks"] as? [[String: Any]])?.compactMap { $0["label"] as? String } ?? []
+            XCTAssertTrue(labels.contains("metaphor watch"), "tasks.json should launch the watch loop")
+            XCTAssertTrue(labels.contains("metaphor run"), "tasks.json should offer the one-shot run")
+
+            let extensions = try json(at: ".vscode/extensions.json")
+            XCTAssertEqual(extensions["recommendations"] as? [String], ["swiftlang.swift-vscode"])
+
+            _ = try json(at: ".vscode/settings.json")
+
+            // metaphor#578 の回避策: 背景インデックスが Syphon.framework を
+            // コピーせず `import metaphor` を壊すので、明示的に切っておく。
+            let sourcekit = try json(at: ".sourcekit-lsp/config.json")
+            XCTAssertEqual(
+                sourcekit["backgroundIndexing"] as? Bool,
+                false,
+                "background indexing must stay off until metaphor#578 is fixed upstream"
+            )
+        }
+    }
+
+    func testInPlaceInitRefusesToClobberExistingEditorConfiguration() throws {
+        try withSourceTemplates {
+            let projectDir = temporaryDirectory().appendingPathComponent("has-vscode")
+            let vscode = projectDir.appendingPathComponent(".vscode")
+            try FileManager.default.createDirectory(at: vscode, withIntermediateDirectories: true)
+            let tasks = vscode.appendingPathComponent("tasks.json")
+            try "{ \"mine\": true }".write(to: tasks, atomically: true, encoding: .utf8)
+
+            let tool = CommandLineTool(
+                console: BufferedConsole(),
+                processRunner: RecordingProcessRunner(),
+                currentDirectory: projectDir
+            )
+
+            // 既存プロジェクトを後から `metaphor init` しても、利用者が育てた
+            // .vscode/ は触らない（衝突として報告して何も書かない）。
+            XCTAssertThrowsError(try tool.run(arguments: ["init", "--metaphor-path", "/Users/so/Repos/metaphor"])) { error in
+                guard let cliError = error as? CLIError else { return XCTFail("Expected CLIError") }
+                XCTAssertTrue(cliError.message.contains(".vscode/tasks.json"))
+            }
+            XCTAssertEqual(try String(contentsOf: tasks), "{ \"mine\": true }")
+        }
+    }
+
     func testNewCommandCreatesProjectFiles() throws {
         try withSourceTemplates {
             let root = temporaryDirectory()
@@ -158,6 +228,8 @@ final class MetaphorCLITests: XCTestCase {
             let claude = root.appendingPathComponent("MySketch/CLAUDE.md")
             let brief = root.appendingPathComponent("MySketch/PROJECT_BRIEF.md")
             let preset = root.appendingPathComponent("MySketch/Sources/MySketch/Presets/default.json")
+            let tasks = root.appendingPathComponent("MySketch/.vscode/tasks.json")
+            let sourcekit = root.appendingPathComponent("MySketch/.sourcekit-lsp/config.json")
 
             XCTAssertTrue(FileManager.default.fileExists(atPath: app.path))
             XCTAssertTrue(FileManager.default.fileExists(atPath: package.path))
@@ -165,6 +237,9 @@ final class MetaphorCLITests: XCTestCase {
             XCTAssertTrue(FileManager.default.fileExists(atPath: claude.path))
             XCTAssertTrue(FileManager.default.fileExists(atPath: brief.path))
             XCTAssertTrue(FileManager.default.fileExists(atPath: preset.path))
+            // ドットディレクトリ配下の生成先も掘られること（人間側の想定環境）。
+            XCTAssertTrue(FileManager.default.fileExists(atPath: tasks.path))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: sourcekit.path))
 
             let packageContents = try String(contentsOf: package)
             XCTAssertTrue(packageContents.contains(".package(path: \"/Users/so/Repos/metaphor\")"))

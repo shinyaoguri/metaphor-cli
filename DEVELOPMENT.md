@@ -187,11 +187,19 @@ Templates/
     Package.swift.template
     README.md.template
     default.json.template
+    vscode-tasks.json.template          # → .vscode/tasks.json
+    vscode-extensions.json.template     # → .vscode/extensions.json
+    vscode-settings.json.template       # → .vscode/settings.json
+    sourcekit-lsp-config.json.template  # → .sourcekit-lsp/config.json
   2d/
     App.swift.template
   live/
     App.swift.template
 ```
+
+ドットディレクトリへ配る生成物（`.vscode/` など）も、**ソース側はドット無しのフラットな名前**で
+置きます（生成先は `templates.json` の `destination` が決めます）。生成先の親ディレクトリは
+`NewCommand` が自動で作成します。
 
 `templates.json` にテンプレートID・説明・生成ファイルを追加し、各 `.template` では次の
 プレースホルダを使えます。

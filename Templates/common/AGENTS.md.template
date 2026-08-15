@@ -68,6 +68,10 @@ Use `metaphor doctor` if the sketch does not build or launch.
 - Shaders: `Sources/{{MODULE_NAME}}/Resources/Shaders/`
 - Presets: `Sources/{{MODULE_NAME}}/Presets/default.json`
 - Creative brief: `PROJECT_BRIEF.md`
+- Editor config: `.vscode/` (the human edits this project in VS Code) and
+  `.sourcekit-lsp/config.json`. **Do not delete `.sourcekit-lsp/config.json`** —
+  it disables background indexing, without which the human's completion and hover
+  break ([metaphor#578](https://github.com/shinyaoguri/metaphor/issues/578)).
 
 ## Observing internal state with probe()
 
