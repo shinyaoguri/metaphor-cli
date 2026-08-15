@@ -2,7 +2,17 @@ import Foundation
 
 public enum BuildInfo {
     public static let name = "metaphor"
+
+    /// CLI 自身の版。リリースビルドでは `release.yml` の "Stamp version" が
+    /// この行（`public static let version = "..."`）をタグの版へ書き換える。
     public static let version = "0.1.0-dev"
+
+    /// stamp 前のプレースホルダ。`version` がこの値のままなら未 stamp = 開発ビルド。
+    /// リテラルが 2 か所に並ぶのは意図的で、`release.yml` の置換は
+    /// `public static let version = "..."` にだけ当たるようにしてある
+    /// （こちらを `version` の別名にすると stamp が判定不能になる）。
+    static let unstampedVersion = "0.1.0-dev"
+
     public static let defaultMetaphorVersion = "0.5.3"
     public static let cliRepositoryOwner = "shinyaoguri"
     public static let cliRepositoryName = "metaphor-cli"
@@ -31,11 +41,64 @@ public enum BuildInfo {
         return d.hasPrefix("v") ? String(d.dropFirst()) : d
     }
 
-    /// 表示用のバージョン。git リビジョンが取れればそれを優先し、無ければ `version` 定数。
-    /// リビジョンは直近タグ + その後のコミット数 + 短縮 SHA なので、コミットのたびに
-    /// 自動で変わる（手動タグ付け不要で動作中ビルドを特定できる）。
+    /// 表示用のバージョン。stamp 済み（= リリースビルド）ならその版、未 stamp なら
+    /// git リビジョン、それも無ければ `version` 定数。
+    ///
+    /// リリースビルドで `version` を優先するのは、`revision` が 1 世代前を名乗るため。
+    /// `release.yml` は「stamp → ビルド → タグ作成」の順に進むので、ビルド時点では
+    /// 新しいタグがまだ無く、さらに stamp 自体がワークツリーを dirty にするため
+    /// `git describe` は `<前タグ>-<N>-g<sha>-dirty` を返す。stamp された `version`
+    /// だけが実際に配布される版と一致する。
+    ///
+    /// 逆に開発ビルドでは `version` がプレースホルダのままなので、直近タグ + その後の
+    /// コミット数 + 短縮 SHA であるリビジョンの方が動作中のビルドを特定できる。
     public static var displayVersion: String {
-        revision.isEmpty ? version : revision
+        displayVersion(version: version, revision: revision)
+    }
+
+    static func displayVersion(version: String, revision: String) -> String {
+        if version != unstampedVersion { return version }
+        return revision.isEmpty ? version : revision
+    }
+
+    /// リリースとして配布された版ではないビルド（版が stamp されていない = ローカルの
+    /// `swift build` や `make install`）。表示の言い回しを変えるために使う。
+    public static var isDevelopmentBuild: Bool {
+        version == unstampedVersion
+    }
+
+    /// バージョン比較に使う版。`displayVersion` が `git describe` 形式のときに、
+    /// describe が足すサフィックスだけを落として素のタグへ畳む。
+    ///
+    /// SemVer では `0.9.0-3-gabc1234` は prerelease 扱いで `0.9.0` より**古い**と
+    /// 判定されるため、畳まずに比較すると「リリースより 3 コミット進んだビルド」に
+    /// 更新を促してしまう（`UpdateCommand` の up-to-date 判定）。
+    public static var releaseVersion: String {
+        releaseVersion(from: displayVersion)
+    }
+
+    /// `git describe --tags --always --dirty` の出力からタグ部分だけを取り出す。
+    /// 真の prerelease タグ（`1.0.0-rc.1`）は落とさず、describe 固有の
+    /// `-<コミット数>-g<短縮SHA>` と末尾の `-dirty` にだけ一致させる。
+    static func releaseVersion(from describeOutput: String) -> String {
+        var value = describeOutput
+        if value.hasSuffix("-dirty") {
+            value.removeLast("-dirty".count)
+        }
+
+        // タグ自体が `-` を含みうる（`1.0.0-rc.1`）ので、末尾 2 要素の“形”で判定する。
+        let parts = value.split(separator: "-")
+        guard parts.count >= 3 else { return value }
+        let sha = parts[parts.count - 1]
+        let commitCount = parts[parts.count - 2]
+        guard sha.hasPrefix("g"),
+              sha.dropFirst().count >= 4,
+              sha.dropFirst().allSatisfy(\.isHexDigit),
+              !commitCount.isEmpty,
+              commitCount.allSatisfy(\.isNumber) else {
+            return value
+        }
+        return parts.dropLast(2).joined(separator: "-")
     }
 
     /// CLI であることを明示した1行表記（例: `metaphor-cli 0.1.1-18-g2cc32da (built ...)`）。

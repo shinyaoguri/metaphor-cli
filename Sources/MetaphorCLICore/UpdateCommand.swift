@@ -7,6 +7,9 @@ public struct UpdateCommand {
     private let currentDirectory: URL
     private let executablePath: String
     private let fileManager: FileManager
+    private let currentVersion: String
+    private let currentReleaseVersion: String
+    private let isDevelopmentBuild: Bool
 
     public init(
         console: any Console,
@@ -14,7 +17,9 @@ public struct UpdateCommand {
         releaseService: any ReleaseServicing,
         currentDirectory: URL,
         executablePath: String,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        currentVersion: String = BuildInfo.displayVersion,
+        isDevelopmentBuild: Bool = BuildInfo.isDevelopmentBuild
     ) {
         self.console = console
         self.processRunner = processRunner
@@ -22,6 +27,9 @@ public struct UpdateCommand {
         self.currentDirectory = currentDirectory
         self.executablePath = executablePath
         self.fileManager = fileManager
+        self.currentVersion = currentVersion
+        self.currentReleaseVersion = BuildInfo.releaseVersion(from: currentVersion)
+        self.isDevelopmentBuild = isDevelopmentBuild
     }
 
     public func run(arguments: [String]) throws {
@@ -53,16 +61,21 @@ public struct UpdateCommand {
 
         do {
             let cliRelease = try latestCLIRelease()
+            // 表示は実行中ビルドの版そのまま、比較は describe のサフィックスを畳んだ版。
+            // 混ぜると「リリースより進んだ開発ビルド」に更新を促してしまう。
             let cliStatus = updateStatus(
-                current: BuildInfo.version,
+                current: currentReleaseVersion,
                 latest: cliRelease.tagName
             )
 
             switch cliStatus {
+            case .upToDate where isDevelopmentBuild:
+                // リリース版と同じ「up to date」で括ると、配布版が入っていると誤読される。
+                console.write("[info] metaphor-cli \(currentVersion) is a development build (latest release: \(cliRelease.tagName))")
             case .upToDate:
-                console.write("[ok] metaphor-cli is up to date (\(BuildInfo.version))")
+                console.write("[ok] metaphor-cli is up to date (\(currentVersion))")
             case .available:
-                console.write("[update] metaphor-cli \(BuildInfo.version) -> \(cliRelease.tagName)")
+                console.write("[update] metaphor-cli \(currentVersion) -> \(cliRelease.tagName)")
                 console.write("         Run: \(managedInstaller?.upgradeCommand ?? "metaphor update self")")
             case .unknown:
                 console.write("[info] metaphor-cli latest release: \(cliRelease.tagName)")
@@ -103,9 +116,10 @@ public struct UpdateCommand {
         }
 
         let release = try latestCLIRelease()
-        let status = updateStatus(current: BuildInfo.version, latest: release.tagName)
+        let status = updateStatus(current: currentReleaseVersion, latest: release.tagName)
         if status == .upToDate, !options.flag("force") {
-            console.write("metaphor-cli is already up to date (\(BuildInfo.version)).")
+            let current = isDevelopmentBuild ? "\(currentVersion), development build" : currentVersion
+            console.write("metaphor-cli is already up to date (\(current)).")
             return
         }
 
