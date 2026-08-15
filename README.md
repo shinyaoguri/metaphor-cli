@@ -81,6 +81,8 @@ metaphor は専用エディタを持たず、既存のエディタに委ねま�
 
 ## Install
 
+各版の変更点は [Releases](https://github.com/shinyaoguri/metaphor-cli/releases)（`gh release list` / `gh release view <tag>`）にあります。
+
 ### Homebrew（推奨）
 
 リポジトリを clone する必要はありません。

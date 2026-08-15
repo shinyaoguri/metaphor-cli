@@ -112,6 +112,14 @@ PR のマージだけで自動的に走ります。`release-on-merge.yml` が PR
 
 詳細は [AGENTS.md](AGENTS.md) と [docs/homebrew.md](docs/homebrew.md) を参照してください。
 
+### 変更履歴
+
+**変更履歴の正本は [Releases](https://github.com/shinyaoguri/metaphor-cli/releases) です**
+（`release.yml` が PR タイトルから自動生成）。[CHANGELOG.md](CHANGELOG.md) は正本への
+ポインタと v0.5.1 までのアーカイブで凍結してあるので、**PR で追記しないでください**
+（追記すると CI の "Check CHANGELOG stays a pointer" が落ちます）。理由は
+[#97](https://github.com/shinyaoguri/metaphor-cli/issues/97) と CHANGELOG.md 冒頭に。
+
 ## AI エージェントで作業する場合
 
 起点は [AGENTS.md](AGENTS.md) です（Claude Code は [CLAUDE.md](CLAUDE.md) 経由で読み込みます）。
