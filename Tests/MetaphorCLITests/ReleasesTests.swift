@@ -22,4 +22,26 @@ final class ReleasesTests: XCTestCase {
         let release = try service.latestRelease(owner: "shinyaoguri", repo: "metaphor")
         XCTAssertEqual(release.tagName, "v1.2.3")
     }
+
+    private static let apiURL = URL(string: "https://api.github.com/repos/shinyaoguri/metaphor/releases/latest")!
+
+    /// User-Agent は注入された版をそのまま名乗る（#137）。
+    func testUserAgentUsesInjectedVersion() {
+        let client = URLSessionHTTPClient(userAgentVersion: "9.9.9-test")
+        let request = client.makeRequest(for: Self.apiURL)
+
+        XCTAssertEqual(request.value(forHTTPHeaderField: "User-Agent"), "metaphor-cli/9.9.9-test")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/vnd.github+json")
+    }
+
+    /// 既定は実行中ビルドを特定できる版（#137）。ハードコード定数 `BuildInfo.version` を
+    /// 直に名乗ると、stamp 前のビルドが全て同じ `0.1.0-dev` を名乗って区別できなくなる。
+    func testUserAgentDefaultsToDisplayVersion() {
+        let request = URLSessionHTTPClient().makeRequest(for: Self.apiURL)
+
+        XCTAssertEqual(
+            request.value(forHTTPHeaderField: "User-Agent"),
+            "metaphor-cli/\(BuildInfo.displayVersion)"
+        )
+    }
 }

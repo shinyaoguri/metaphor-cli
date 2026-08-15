@@ -19,13 +19,14 @@ final class MCPServerTests: XCTestCase {
 
     /// I/O を捕捉する MCPServer を作る。返り値の getter で送信メッセージ列を読む。
     private func makeServer(
-        handler: any MCPToolHandling
+        handler: any MCPToolHandling,
+        serverVersion: String = "test"
     ) -> (server: MCPServer, sent: () -> [[String: Any]]) {
         final class Box { var messages: [String] = [] }
         let box = Box()
         let server = MCPServer(
             serverName: "metaphor",
-            serverVersion: "test",
+            serverVersion: serverVersion,
             handler: handler,
             readLine: { nil },
             writeMessage: { box.messages.append($0) }
@@ -51,6 +52,20 @@ final class MCPServerTests: XCTestCase {
         let info = result?["serverInfo"] as? [String: Any]
         XCTAssertEqual(info?["name"] as? String, "metaphor")
         XCTAssertEqual(info?["version"] as? String, "test")
+    }
+
+    /// `metaphor mcp` がハンドシェイクで名乗る版は実行中ビルドを特定できるもの（#137）。
+    /// ハードコード定数 `BuildInfo.version` だと、AI エージェントから見えるサーバ版が
+    /// stamp 前は常に `0.1.0-dev` になり、どの版の CLI と話しているか判断できない。
+    func testMCPCommandAdvertisesDisplayVersion() {
+        XCTAssertEqual(MCPCommand.serverVersion, BuildInfo.displayVersion)
+
+        let (server, sent) = makeServer(handler: StubHandler(), serverVersion: MCPCommand.serverVersion)
+        server.handle(#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#)
+
+        let result = sent().first?["result"] as? [String: Any]
+        let info = result?["serverInfo"] as? [String: Any]
+        XCTAssertEqual(info?["version"] as? String, BuildInfo.displayVersion)
     }
 
     func testToolsListReturnsRegisteredTools() {

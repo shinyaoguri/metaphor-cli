@@ -127,11 +127,16 @@ public struct MCPCommand {
         runServer(handler: handler, outputHandle: outputHandle, directory: directory)
     }
 
+    /// MCP ハンドシェイク（`initialize` 応答の `serverInfo.version`）で名乗る版。
+    /// AI エージェントが「どの版の CLI と話しているか」を判断できるよう、実行中ビルドを
+    /// 特定できる版を使う（`BuildInfo.version` は stamp 前だと全ビルドが同じ値になる）。
+    static var serverVersion: String { BuildInfo.displayVersion }
+
     /// MCP サーバ（stdio）を起動して stdin EOF までブロックする。
     private func runServer(handler: SketchToolHandler, outputHandle: FileHandle, directory: URL) {
         let server = MCPServer(
             serverName: "metaphor",
-            serverVersion: BuildInfo.version,
+            serverVersion: Self.serverVersion,
             handler: handler,
             readLine: { Swift.readLine(strippingNewline: true) },
             writeMessage: { message in
