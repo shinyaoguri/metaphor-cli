@@ -127,6 +127,13 @@ jobs:
       # when the GitHub Releases API is unreachable. `releases/latest`
       # excludes prereleases and drafts. If metaphor has no stable release
       # yet, keep whatever value is already in BuildInfo.swift.
+      #
+      # Same shape as "Stamp version" above, and for the same reason: anchor the
+      # match to the declaration at the start of a line (a doc comment quoting
+      # the declaration would otherwise win, since -0p replaces only the first
+      # match), then verify the declaration actually carries the fetched version.
+      # A pin that silently misses ships a release whose offline fallback still
+      # names whatever placeholder was in the tree.
       - name: Pin default metaphor library version
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -139,7 +146,12 @@ jobs:
           fi
           LATEST_VERSION="${LATEST#v}"
           echo "Pinning defaultMetaphorVersion to ${LATEST_VERSION}"
-          perl -0pi -e "s/public static let defaultMetaphorVersion = \"[^\"]+\"/public static let defaultMetaphorVersion = \"${LATEST_VERSION}\"/" Sources/MetaphorCLICore/BuildInfo.swift
+          perl -0pi -e "s/^    public static let defaultMetaphorVersion = \"[^\"]+\"\$/    public static let defaultMetaphorVersion = \"${LATEST_VERSION}\"/m" Sources/MetaphorCLICore/BuildInfo.swift
+          if ! grep -qxF "    public static let defaultMetaphorVersion = \"${LATEST_VERSION}\"" Sources/MetaphorCLICore/BuildInfo.swift; then
+            echo "::error::Pinning BuildInfo.defaultMetaphorVersion to ${LATEST_VERSION} did not take effect."
+            grep -n 'public static let defaultMetaphorVersion' Sources/MetaphorCLICore/BuildInfo.swift || true
+            exit 1
+          fi
 
       - name: Test
         run: swift test

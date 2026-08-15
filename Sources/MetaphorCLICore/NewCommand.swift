@@ -298,9 +298,26 @@ public struct NewCommand {
             )
             return release.tagName.hasPrefix("v") ? String(release.tagName.dropFirst()) : release.tagName
         } catch {
-            console.writeError("warning: could not fetch latest metaphor release; using \(BuildInfo.defaultMetaphorVersion)")
+            console.writeError(Self.fallbackVersionWarning(
+                version: BuildInfo.defaultMetaphorVersion,
+                isDevelopmentBuild: BuildInfo.isDevelopmentBuild
+            ))
             return nil
         }
+    }
+
+    /// 最新リリースを引けずに組み込みの既定値へ落ちたときの警告。
+    ///
+    /// リリースビルドの既定値は `release.yml` がその時点の metaphor 最新安定版へ pin
+    /// するので、そのまま使ってよい。一方ローカルの `swift build` / `make install` では
+    /// pin が走らず、`BuildInfo.defaultMetaphorVersion` はコミットされたプレースホルダの
+    /// まま。どちらの値を見ているのかが分からないと `metaphor new` の結果を説明できないので、
+    /// 開発ビルドではその旨と逃げ道を併記する。
+    static func fallbackVersionWarning(version: String, isDevelopmentBuild: Bool) -> String {
+        let head = "warning: could not fetch latest metaphor release; using \(version)"
+        guard isDevelopmentBuild else { return head }
+        return head + " (development build: this default is an unpinned placeholder and may be stale;"
+            + " pass --metaphor-version <ver> to choose explicitly)"
     }
 
     public static let helpText = """
