@@ -28,7 +28,7 @@ metaphor run
 | `metaphor update` | CLI 本体と `metaphor` ライブラリの更新を確認・適用 |
 | `metaphor doctor` | Swift / Xcode / テンプレート / Syphon 環境の診断 |
 | `metaphor examples` | 利用できるテンプレートの一覧表示 |
-| `metaphor version` | バージョン表示 |
+| `metaphor version [--json]` | CLI 本体と、いるディレクトリで解決されている `metaphor` ライブラリの版を表示（ネットワークは叩かない） |
 
 生成されるプロジェクトは通常の Swift Package なので、`swift run` でも実行できます。また、AI アシスタント向けの `AGENTS.md`（＋ Claude Code 向けに `@AGENTS.md` を import する薄い `CLAUDE.md`）と、制作意図を短く保つ `PROJECT_BRIEF.md` が同梱され、どの AI クライアントでも同じガイドが自動でコンテキストに載ります。
 

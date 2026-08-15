@@ -10,6 +10,15 @@
 
 ### 追加
 
+- `metaphor version` が**環境の版一覧**になった。CLI 本体に加えて、いるディレクトリで
+  解決されている `metaphor` ライブラリの版も出す（ネットワークは叩かない。最新かどうかは
+  従来どおり `metaphor update check` の担当）
+  - CLI 行が `metaphor …` から `metaphor-cli …` になり、ライブラリ版との取り違えが消えた
+  - ライブラリ行は `0.9.0 (Package.resolved)` / `local path ../metaphor` /
+    未解決（スケッチ外）の 3 通り
+  - `metaphor version --json` を追加。CI・AI エージェント向けにキーが常にそろった
+    JSON を出す（当てはまらない値は `null`）
+  - `metaphor doctor` も冒頭で同じ 2 行を出す
 - `watch` のリロードで**子スケッチの状態を運ぶ**（契約点 8）。再ビルド後に子を
   作り直す前へ保存要求を挟み、書き上がった `state.json` を次の子へ
   `METAPHOR_RESTORE_STATE` で渡す

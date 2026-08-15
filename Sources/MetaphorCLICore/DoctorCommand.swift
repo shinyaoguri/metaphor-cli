@@ -29,6 +29,9 @@ public struct DoctorCommand {
         }
 
         console.write("metaphor doctor")
+        // 環境診断の正典なので、`metaphor version` と同じ 2 行をそのまま出す
+        // （どの CLI とどのライブラリの話をしているかが診断結果の前提になる）。
+        EnvironmentVersions.resolve(in: currentDirectory).textLines.forEach(console.write)
         checkCommand(label: "Swift", arguments: ["swift", "--version"])
         checkCommand(label: "Xcode", arguments: ["xcodebuild", "-version"])
 
