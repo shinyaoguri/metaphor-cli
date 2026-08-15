@@ -30,7 +30,7 @@ metaphor run
 | `metaphor examples` | 利用できるテンプレートの一覧表示 |
 | `metaphor version [--json]` | CLI 本体と、いるディレクトリで解決されている `metaphor` ライブラリの版を表示（ネットワークは叩かない） |
 
-生成されるプロジェクトは通常の Swift Package なので、`swift run` でも実行できます。また、AI アシスタント向けの `AGENTS.md`（＋ Claude Code 向けに `@AGENTS.md` を import する薄い `CLAUDE.md`）と、制作意図を短く保つ `PROJECT_BRIEF.md` が同梱され、どの AI クライアントでも同じガイドが自動でコンテキストに載ります。
+生成されるプロジェクトは通常の Swift Package なので、`swift run` でも実行できます。また、AI アシスタント向けの `AGENTS.md`（＋ Claude Code 向けに `@AGENTS.md` を import する薄い `CLAUDE.md`）と、制作意図を短く保つ `PROJECT_BRIEF.md` が同梱され、どの AI クライアントでも同じガイドが自動でコンテキストに載ります。人間側の編集環境も同様に、`.vscode/`（タスク・推奨拡張・ワークスペース設定）と `.sourcekit-lsp/config.json` が同梱されます（[エディタ](#エディタ)）。
 
 ## テンプレート
 
@@ -52,6 +52,26 @@ metaphor new LiveSet --template live
 cd LiveSet
 metaphor run
 ```
+
+## エディタ
+
+metaphor は専用エディタを持たず、既存のエディタに委ねます。想定は **VSCode と Xcode の二刀流**で、どちらかを捨てる必要はありません。
+
+- **日常の制作は VSCode + `metaphor watch`** — 保存するたびに再ビルドされ、ライブビューア窓は開いたまま差し替わります。生成物に同梱される `.vscode/tasks.json` から `metaphor watch` / `metaphor run` / `swift build` をコマンドパレット（`Tasks: Run Task`）で起動でき、Swift のコンパイルエラーは Problems パネルに出ます。`metaphor watch` は既定のビルドタスクなので `⇧⌘B` でも始められます。
+- **GPU デバッグのときだけ Xcode** — フレームキャプチャ・シェーダプロファイラなど Metal のツールが要る場面では、同じ SwiftPM プロジェクトをそのまま Xcode で開きます。
+
+生成プロジェクトに同梱されるファイル:
+
+| ファイル | 役割 |
+|---|---|
+| `.vscode/tasks.json` | `metaphor watch` / `metaphor run` / `swift build` のタスク（Swift 用 problemMatcher 付き） |
+| `.vscode/extensions.json` | Swift 拡張（`swiftlang.swift-vscode`）を推奨提示 |
+| `.vscode/settings.json` | `.build` / `.metaphor` / `Captures` / `Exports` を検索・監視から除外 |
+| `.sourcekit-lsp/config.json` | 背景インデックスを無効化（下記） |
+
+補完・hover・定義ジャンプには Swift 拡張（SourceKit-LSP）が要ります。`.sourcekit-lsp/config.json` の `"backgroundIndexing": false` は、背景インデックスが走ると `Syphon.framework` がコピーされず `import metaphor` が `no such module` になる問題（[metaphor#578](https://github.com/shinyaoguri/metaphor/issues/578)）の回避です。一度 `metaphor run` / `metaphor watch`（= `swift build`）を通してあれば、通常の `.build` を参照して補完も hover も通ります。**このファイルを消すと補完が全滅する**ので、上流が直るまでは残してください。
+
+デバッガ構成（`launch.json`）は同梱しません。LLDB でスケッチを止めると Metal のフレーム駆動ごと固まるため、`metaphor watch` のホットリロードで観測する方が実用的です（必要なら Swift 拡張から手動で作成できます）。
 
 ## Requirements
 

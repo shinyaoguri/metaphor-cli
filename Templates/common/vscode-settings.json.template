@@ -1,0 +1,15 @@
+{
+  "search.exclude": {
+    "**/.build": true,
+    "**/.metaphor": true,
+    "**/Captures": true,
+    "**/Exports": true
+  },
+  "files.watcherExclude": {
+    "**/.build/**": true,
+    "**/.metaphor/**": true,
+    "**/Captures/**": true,
+    "**/Exports/**": true
+  },
+  "swift.autoGenerateLaunchConfigurations": false
+}

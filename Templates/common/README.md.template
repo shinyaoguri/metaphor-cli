@@ -15,6 +15,24 @@ swift run                 # plain SwiftPM run, no metaphor-cli needed
 
 The sketch entry point is `Sources/{{MODULE_NAME}}/App.swift`.
 
+## Editor
+
+This project ships editor configuration for VS Code, and works in Xcode too
+(same SwiftPM package — open it when you need Metal frame capture or the shader
+profiler).
+
+- `.vscode/tasks.json` — run `metaphor watch` (default build task, `⇧⌘B`),
+  `metaphor run`, or `swift build` from the command palette. Swift compile
+  errors land in the Problems panel.
+- `.vscode/extensions.json` — recommends the Swift extension
+  (`swiftlang.swift-vscode`), which provides completion, hover, and go-to-definition.
+- `.sourcekit-lsp/config.json` — **keep this file.** It turns off sourcekit-lsp's
+  background indexing, which otherwise builds without copying `Syphon.framework`
+  and leaves `import metaphor` unresolved
+  ([metaphor#578](https://github.com/shinyaoguri/metaphor/issues/578)). Once you
+  have run `metaphor run` / `metaphor watch` at least once, the language features
+  read the normal `.build` output and work.
+
 ## AI-assisted iteration
 
 This project ships ready for AI-assisted development. `.mcp.json` is included, so

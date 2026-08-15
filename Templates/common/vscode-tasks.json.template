@@ -1,0 +1,77 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "metaphor watch",
+      "detail": "Live viewer + hot reload — the main loop while sketching.",
+      "type": "shell",
+      "command": "metaphor",
+      "args": ["watch"],
+      "group": { "kind": "build", "isDefault": true },
+      "isBackground": true,
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": {
+        "owner": "swift",
+        "source": "swiftc",
+        "fileLocation": ["autoDetect", "${workspaceFolder}"],
+        "pattern": {
+          "regexp": "^(.*?):(\\d+):(\\d+): (warning|error|note): (.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "\\[watch\\] 変更を検出",
+          "endsPattern": "\\[watch\\] (実行中|リロードしました|ビルド失敗|初回ビルド失敗|ビルド実行エラー)"
+        }
+      }
+    },
+    {
+      "label": "metaphor run",
+      "detail": "Build and launch the sketch once.",
+      "type": "shell",
+      "command": "metaphor",
+      "args": ["run"],
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": {
+        "owner": "swift",
+        "source": "swiftc",
+        "fileLocation": ["autoDetect", "${workspaceFolder}"],
+        "pattern": {
+          "regexp": "^(.*?):(\\d+):(\\d+): (warning|error|note): (.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        }
+      }
+    },
+    {
+      "label": "swift build",
+      "detail": "Compile only, without launching the sketch.",
+      "type": "shell",
+      "command": "swift",
+      "args": ["build"],
+      "group": "build",
+      "presentation": { "reveal": "silent", "panel": "shared" },
+      "problemMatcher": {
+        "owner": "swift",
+        "source": "swiftc",
+        "fileLocation": ["autoDetect", "${workspaceFolder}"],
+        "pattern": {
+          "regexp": "^(.*?):(\\d+):(\\d+): (warning|error|note): (.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        }
+      }
+    }
+  ]
+}

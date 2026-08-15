@@ -29,6 +29,22 @@
       "destination": "PROJECT_BRIEF.md"
     },
     {
+      "source": "common/vscode-tasks.json.template",
+      "destination": ".vscode/tasks.json"
+    },
+    {
+      "source": "common/vscode-extensions.json.template",
+      "destination": ".vscode/extensions.json"
+    },
+    {
+      "source": "common/vscode-settings.json.template",
+      "destination": ".vscode/settings.json"
+    },
+    {
+      "source": "common/sourcekit-lsp-config.json.template",
+      "destination": ".sourcekit-lsp/config.json"
+    },
+    {
       "source": "common/gitkeep.template",
       "destination": "Sources/{{MODULE_NAME}}/Resources/Images/.gitkeep"
     },
