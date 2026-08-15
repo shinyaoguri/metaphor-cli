@@ -90,8 +90,7 @@ public final class MetricsPoller {
         idPrefix: String? = nil,
         onSample: @escaping (MetricsSample) -> Void
     ) {
-        let root = sketchDirectory
-            .appendingPathComponent(".metaphor", isDirectory: true)
+        let root = MetaphorStateDirectory.root(for: sketchDirectory)
             .appendingPathComponent("probe", isDirectory: true)
         self.probeRoot = root
         self.requestPath = root.appendingPathComponent("request.json")

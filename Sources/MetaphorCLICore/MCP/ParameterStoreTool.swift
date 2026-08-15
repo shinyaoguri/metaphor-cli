@@ -24,8 +24,7 @@ public final class ParameterStoreTool {
     /// set-request を読み、**即時**に `params.json` を書き直す（GUI ドラッグ由来の
     /// デバウンスは掛からない）ため、動作中のスケッチなら 1 フレームで返る。
     public init(sketchDirectory: URL, timeout: TimeInterval = 5.0) {
-        let root = sketchDirectory
-            .appendingPathComponent(".metaphor", isDirectory: true)
+        let root = MetaphorStateDirectory.root(for: sketchDirectory)
             .appendingPathComponent("params", isDirectory: true)
         self.paramsRoot = root
         self.paramsPath = root.appendingPathComponent("params.json")

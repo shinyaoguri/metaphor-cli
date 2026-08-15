@@ -287,17 +287,23 @@ final class MetaphorCLITests: XCTestCase {
 
     func testRunForwardsExplicitSyphonNameAsEnv() throws {
         let runner = RecordingProcessRunner()
+        let directory = temporaryDirectory()
         let cmd = RunCommand(
             console: BufferedConsole(),
             processRunner: runner,
-            currentDirectory: temporaryDirectory()
+            currentDirectory: directory
         )
 
         try cmd.run(arguments: ["--syphon=MySketch", "--", "extra"])
 
         let invocation = try XCTUnwrap(runner.invocations.first)
         XCTAssertEqual(invocation.executable, "/usr/bin/env")
-        XCTAssertEqual(invocation.arguments, ["METAPHOR_SYPHON_NAME=MySketch", "swift", "run", "--", "extra"])
+        // METAPHOR_STATE_DIR は常に子へ渡す（`.metaphor/` の基準を子の cwd に
+        // 依存させないため。CONTRACT.md 契約点 2 / metaphor#688）。
+        XCTAssertEqual(
+            invocation.arguments,
+            ["METAPHOR_SYPHON_NAME=MySketch", stateDirAssignment(for: directory),
+             "swift", "run", "--", "extra"])
     }
 
     func testRunBareSyphonUsesDirectoryName() throws {
@@ -308,28 +314,34 @@ final class MetaphorCLITests: XCTestCase {
 
         try cmd.run(arguments: ["--syphon"])
 
-        XCTAssertEqual(runner.invocations.first?.arguments, ["METAPHOR_SYPHON_NAME=WaveField", "swift", "run"])
+        XCTAssertEqual(
+            runner.invocations.first?.arguments,
+            ["METAPHOR_SYPHON_NAME=WaveField", stateDirAssignment(for: sketchDir), "swift", "run"])
     }
 
     func testRunWithoutSyphonForwardsArgumentsUnchanged() throws {
         let runner = RecordingProcessRunner()
+        let directory = temporaryDirectory()
         let cmd = RunCommand(
             console: BufferedConsole(),
             processRunner: runner,
-            currentDirectory: temporaryDirectory()
+            currentDirectory: directory
         )
 
         try cmd.run(arguments: ["--", "foo"])
 
-        XCTAssertEqual(runner.invocations.first?.arguments, ["swift", "run", "--", "foo"])
+        XCTAssertEqual(
+            runner.invocations.first?.arguments,
+            [stateDirAssignment(for: directory), "swift", "run", "--", "foo"])
     }
 
     func testRunMetricsInjectsProbeEnvAndStripsFlags() throws {
         let runner = RecordingProcessRunner()
+        let directory = temporaryDirectory()
         let cmd = RunCommand(
             console: BufferedConsole(),
             processRunner: runner,
-            currentDirectory: temporaryDirectory()
+            currentDirectory: directory
         )
 
         try cmd.run(arguments: ["--metrics", "--metrics-interval", "0.5", "-c", "release"])
@@ -337,34 +349,40 @@ final class MetaphorCLITests: XCTestCase {
         // METAPHOR_PROBE=1 が注入され、--metrics 系フラグは swift run へ渡らない。
         XCTAssertEqual(
             runner.invocations.first?.arguments,
-            ["METAPHOR_PROBE=1", "swift", "run", "-c", "release"]
+            ["METAPHOR_PROBE=1", stateDirAssignment(for: directory), "swift", "run", "-c", "release"]
         )
     }
 
     func testRunMetricsIntervalAloneImpliesMetrics() throws {
         let runner = RecordingProcessRunner()
+        let directory = temporaryDirectory()
         let cmd = RunCommand(
             console: BufferedConsole(),
             processRunner: runner,
-            currentDirectory: temporaryDirectory()
+            currentDirectory: directory
         )
 
         try cmd.run(arguments: ["--metrics-interval=2"])
 
-        XCTAssertEqual(runner.invocations.first?.arguments, ["METAPHOR_PROBE=1", "swift", "run"])
+        XCTAssertEqual(
+            runner.invocations.first?.arguments,
+            ["METAPHOR_PROBE=1", stateDirAssignment(for: directory), "swift", "run"])
     }
 
     func testRunWithoutMetricsDoesNotInjectProbeEnv() throws {
         let runner = RecordingProcessRunner()
+        let directory = temporaryDirectory()
         let cmd = RunCommand(
             console: BufferedConsole(),
             processRunner: runner,
-            currentDirectory: temporaryDirectory()
+            currentDirectory: directory
         )
 
         try cmd.run(arguments: ["-c", "release"])
 
-        XCTAssertEqual(runner.invocations.first?.arguments, ["swift", "run", "-c", "release"])
+        XCTAssertEqual(
+            runner.invocations.first?.arguments,
+            [stateDirAssignment(for: directory), "swift", "run", "-c", "release"])
     }
 
     func testSyphonStableNameUsesDirectoryBasename() {
@@ -693,6 +711,12 @@ final class MetaphorCLITests: XCTestCase {
             // The directory we created is rolled back, so a retry isn't blocked.
             XCTAssertFalse(FileManager.default.fileExists(atPath: projectURL.path))
         }
+    }
+
+    /// `metaphor run` が常に子へ渡す `METAPHOR_STATE_DIR=...` の期待値
+    /// （CONTRACT.md 契約点 2 / metaphor#688）。
+    private func stateDirAssignment(for directory: URL) -> String {
+        "METAPHOR_STATE_DIR=" + MetaphorStateDirectory.base(for: directory).path
     }
 
     private func temporaryDirectory() -> URL {

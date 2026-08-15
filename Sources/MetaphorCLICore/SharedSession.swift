@@ -22,7 +22,7 @@ public enum SharedSession {
 
     /// `<sketch>/.metaphor`
     public static func metaphorDirectory(for sketchDirectory: URL) -> URL {
-        sketchDirectory.appendingPathComponent(".metaphor", isDirectory: true)
+        MetaphorStateDirectory.root(for: sketchDirectory)
     }
 
     /// `<sketch>/.metaphor/session.json`

@@ -23,8 +23,7 @@ public final class ProbeSnapshotTool {
     /// （Metal/Syphon 初期化 + 初フレーム）を待つため既定を長めに取る。以降の
     /// snapshot は通常 1 フレームで返る。
     public init(sketchDirectory: URL, timeout: TimeInterval = 15.0) {
-        let root = sketchDirectory
-            .appendingPathComponent(".metaphor", isDirectory: true)
+        let root = MetaphorStateDirectory.root(for: sketchDirectory)
             .appendingPathComponent("probe", isDirectory: true)
         self.probeRoot = root
         self.requestPath = root.appendingPathComponent("request.json")

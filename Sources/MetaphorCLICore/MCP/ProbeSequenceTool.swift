@@ -23,8 +23,7 @@ public final class ProbeSequenceTool {
     /// `timeout` は 1 回の sequence 撮影の最大待ち時間。frames×every 枚ぶんの描画 +
     /// 初回 cold-start を見込んで、単一フレームより長めの既定にする。
     public init(sketchDirectory: URL, timeout: TimeInterval = 30.0) {
-        let root = sketchDirectory
-            .appendingPathComponent(".metaphor", isDirectory: true)
+        let root = MetaphorStateDirectory.root(for: sketchDirectory)
             .appendingPathComponent("probe", isDirectory: true)
         self.probeRoot = root
         self.requestPath = root.appendingPathComponent("request.json")

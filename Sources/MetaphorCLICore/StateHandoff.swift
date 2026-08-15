@@ -29,8 +29,7 @@ public final class StateHandoff {
     ///   - timeout: 保存完了を待つ最大時間。既定 250ms は「間に合わなければ諦めて
     ///     リロードを進める」という設計判断（CONTRACT.md 契約点 8）。
     public init(sketchDirectory: URL, timeout: TimeInterval = 0.25) {
-        let root = sketchDirectory
-            .appendingPathComponent(".metaphor", isDirectory: true)
+        let root = MetaphorStateDirectory.root(for: sketchDirectory)
             .appendingPathComponent("state", isDirectory: true)
         self.stateRoot = root
         self.saveRequestPath = root.appendingPathComponent("save-request.json")
