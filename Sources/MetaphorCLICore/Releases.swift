@@ -223,3 +223,28 @@ public enum PackageResolvedReader {
         return nil
     }
 }
+
+/// `Package.swift` を（SwiftPM を起動せずに）テキストとして読む。metaphor 本体の
+/// 開発や metaphor-sketches のようにローカルの metaphor を `path:` で指す構成では
+/// `Package.resolved` に版が載らないため、`PackageResolvedReader` の答えが nil でも
+/// 「解決できない」ではなく「ローカル参照」だと分かる必要がある。
+public enum PackageManifestReader {
+    /// metaphor をローカルパス依存で参照しているなら、そのパスを返す。
+    public static func localMetaphorDependencyPath(in packageDirectory: URL) -> String? {
+        let packageFile = packageDirectory.appendingPathComponent("Package.swift")
+        guard let contents = try? String(contentsOf: packageFile, encoding: .utf8) else { return nil }
+        for line in contents.split(whereSeparator: \.isNewline).map(String.init) {
+            guard line.contains(".package(path:"),
+                  line.localizedCaseInsensitiveContains("metaphor") else {
+                continue
+            }
+
+            guard let firstQuote = line.firstIndex(of: "\""),
+                  let secondQuote = line[line.index(after: firstQuote)...].firstIndex(of: "\"") else {
+                return line.trimmingCharacters(in: .whitespaces)
+            }
+            return String(line[line.index(after: firstQuote)..<secondQuote])
+        }
+        return nil
+    }
+}

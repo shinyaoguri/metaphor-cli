@@ -146,7 +146,7 @@ public struct UpdateCommand {
             throw CLIError("Package.swift in \(currentDirectory.path) does not appear to depend on metaphor")
         }
 
-        if let localPath = localMetaphorDependencyPath(at: currentDirectory) {
+        if let localPath = PackageManifestReader.localMetaphorDependencyPath(in: currentDirectory) {
             console.write("This project uses a local metaphor checkout:")
             console.write("  \(localPath)")
             console.write("Update it with:")
@@ -394,24 +394,6 @@ public struct UpdateCommand {
         return contents.contains("shinyaoguri/metaphor") ||
             contents.contains(".product(name: \"metaphor\"") ||
             contents.contains(".product(name:\"metaphor\"")
-    }
-
-    private func localMetaphorDependencyPath(at directory: URL) -> String? {
-        let packageFile = directory.appendingPathComponent("Package.swift")
-        guard let contents = try? String(contentsOf: packageFile) else { return nil }
-        for line in contents.split(whereSeparator: \.isNewline).map(String.init) {
-            guard line.contains(".package(path:"),
-                  line.localizedCaseInsensitiveContains("metaphor") else {
-                continue
-            }
-
-            guard let firstQuote = line.firstIndex(of: "\""),
-                  let secondQuote = line[line.index(after: firstQuote)...].firstIndex(of: "\"") else {
-                return line.trimmingCharacters(in: .whitespaces)
-            }
-            return String(line[line.index(after: firstQuote)..<secondQuote])
-        }
-        return nil
     }
 
     public static let helpText = """

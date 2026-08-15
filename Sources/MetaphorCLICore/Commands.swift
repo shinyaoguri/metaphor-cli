@@ -79,7 +79,10 @@ public struct CommandLineTool {
         case "examples", "templates":
             ExamplesCommand(console: console).run()
         case "version", "--version":
-            console.write(BuildInfo.fullIdentifier)
+            try VersionCommand(
+                console: console,
+                currentDirectory: currentDirectory
+            ).run(arguments: commandArguments)
         case "help", "--help", "-h":
             console.write(Self.helpText)
         default:
@@ -99,7 +102,7 @@ public struct CommandLineTool {
       metaphor update [check|self|library|all]
       metaphor doctor
       metaphor examples
-      metaphor version
+      metaphor version [--json]
 
     Commands:
       new       Create a new metaphor sketch package
@@ -110,7 +113,7 @@ public struct CommandLineTool {
       update    Check or apply metaphor CLI/library updates
       doctor    Check local Swift/Xcode/package setup
       examples  List available project templates
-      version   Print CLI version
+      version   Print the CLI and resolved metaphor library versions
 
     Templates:
     \(ProjectTemplate.usageList)
