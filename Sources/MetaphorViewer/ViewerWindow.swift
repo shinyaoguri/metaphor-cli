@@ -41,6 +41,10 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
     /// 一度でもフレームを描いたか。全面オーバーレイか右下バッジかの出し分けに使う。
     private var hasRenderedFrame = false
 
+    /// Syphon サーバーへの張り替え待ちが長引いているか（``SyphonFrameSource`` の判断）。
+    /// 「待てば来る」のか「復帰を試みている」のかを利用者が区別できるよう表示に反映する。
+    private var isReconnecting = false
+
     /// 全面ローディング表示（フレーム未取得時）。
     private var fullOverlay: StatusOverlayView?
     /// 右下の控えめなバッジ（フレーム取得済みのリロード中など）。
@@ -169,14 +173,23 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
             }
 
         case .launching:
+            // 待機が長引いているときは、ただ待っているのではなく復帰を試みていることを見せる
+            // （Syphon の announce 取りこぼしからの自力復帰中。Issue #139）。
             if hasRenderedFrame {
                 fullOverlay.isHidden = true
                 badge.isHidden = false
-                badge.configure(spinning: true, text: "新しいフレームを待機中…")
+                badge.configure(
+                    spinning: true,
+                    text: isReconnecting ? "Syphon サーバへ再接続を試行中…" : "新しいフレームを待機中…"
+                )
             } else {
                 badge.isHidden = true
                 fullOverlay.isHidden = false
-                fullOverlay.configure(mode: .loading, title: "スケッチを起動中…", detail: "Syphon 出力を待機しています")
+                fullOverlay.configure(
+                    mode: .loading,
+                    title: "スケッチを起動中…",
+                    detail: isReconnecting ? "Syphon サーバへ再接続を試行中です" : "Syphon 出力を待機しています"
+                )
             }
 
         case .buildFailed(let message):
@@ -292,8 +305,18 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
 
     public func draw(in view: MTKView) {
         // 接続・子プロセス差し替え（リロード）検知。``SyphonFrameSource`` が
-        // 同名・別 UUID の新サーバーへの張り替えまで面倒を見る。
+        // 同名・別 UUID の新サーバーへの張り替えと、そこからの自力復帰まで面倒を見る。
         source.poll()
+
+        // 復帰試行に入った/抜けたら表示とログを更新する（毎フレーム再構成はしない）。
+        if source.isStalled != isReconnecting {
+            isReconnecting = source.isStalled
+            let message = isReconnecting
+                ? "[viewer] 新しい Syphon サーバが見つかりません。再アナウンスを要求して復帰を試みます…\n"
+                : "[viewer] Syphon サーバへ接続し直しました\n"
+            FileHandle.standardError.write(message.data(using: .utf8)!)
+            refreshOverlay()
+        }
 
         // 最新フレーム（bgra8Unorm）。来ていなければ直前フレームを使い続ける。
         if let frame = source.currentTexture() {

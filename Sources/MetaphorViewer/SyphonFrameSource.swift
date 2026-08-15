@@ -1,5 +1,7 @@
 import Foundation
 import Metal
+import MetaphorCLICore
+import QuartzCore
 import Syphon
 
 /// 名前付き Syphon サーバーに接続し、最新フレームの `MTLTexture` を提供する。
@@ -17,18 +19,39 @@ import Syphon
 /// ``expectNewServer()`` を呼び、次に現れる「直前とは別 UUID の同名サーバー」へ
 /// 確実に張り替える。`noLoop()` 中（publish が止まる）でも、フレーム途絶ではなく
 /// **UUID の変化**で判定するため誤発火しない。
+///
+/// ## 自力復帰（Issue #139）
+///
+/// `SyphonServerDirectory` は通知ベースで再スキャン API を持たないため、announce 通知を
+/// 一度取りこぼすと新サーバーの存在に永久に気付けない。判断は ``SyphonRecoveryPolicy`` に
+/// 任せ、この型はその指示（張り替え・再アナウンス要求）を実行するだけにしている。
+/// 復帰の材料になるのは次の 2 つ:
+///
+/// - **再アナウンス要求**: 新サーバーが現れないまま一定時間が過ぎたら
+///   `ServerAnnounceRequest` をブロードキャストし、生きているサーバーに再アナウンスさせる
+/// - **張り替え先の生存確認**: 掴んだ先からフレームが来なければ policy が降格し、次の候補へ移る
+///   （そのための「最後にフレームを受け取った時刻」をこの型が記録する）
 public final class SyphonFrameSource {
     private let device: MTLDevice
     private let serverName: String
     private var client: SyphonMetalClient?
 
-    /// 現在接続しているサーバーの UUID。差し替え時に「別 UUID」を選ぶのに使う。
+    /// 接続・張り替え・再アナウンス要求の判断（純粋ロジック。時計と候補一覧だけで決まる）。
+    private let policy: SyphonRecoveryPolicy
+
+    /// 現在接続しているサーバーの記述（UUID → 記述の対応付けに使う）。
     private var connectedUUID: String?
 
-    /// 子の差し替え待ち。`true` の間は、直前とは別 UUID の同名サーバーが現れたら張り替える。
-    private var awaitingSwap = false
-    /// 差し替え時に避けるべき UUID（＝再起動前の、もう死んでいるサーバー）。
-    private var swapFromUUID: String?
+    /// 現在の接続で最後にフレームを受け取った時刻（``CACurrentMediaTime()``）と、
+    /// 張り替えごとに +1 する世代番号。世代は、旧クライアントから遅れて届くコールバックを
+    /// 「新しい接続でフレームを受け取れている」と誤判定しないために使う。
+    /// どちらも Syphon の別スレッドとメインスレッドの両方から触るのでロックで守る。
+    private var lastFrameAt: TimeInterval?
+    private var generation: UInt64 = 0
+    private let frameLock = NSLock()
+
+    /// 待機が長引いているか（利用者へ「再接続を試行中」と見せるための表示用）。
+    public private(set) var isStalled = false
 
     /// 新フレーム到着時に呼ばれる（Syphon の別スレッドから呼ばれうる）。
     public var onFrame: (() -> Void)?
@@ -36,44 +59,60 @@ public final class SyphonFrameSource {
     /// サーバーへ接続済みかつ有効かどうか。
     public var isConnected: Bool { client?.isValid == true }
 
-    public init(device: MTLDevice, serverName: String) {
+    public init(
+        device: MTLDevice,
+        serverName: String,
+        policy: SyphonRecoveryPolicy = SyphonRecoveryPolicy()
+    ) {
         self.device = device
         self.serverName = serverName
+        self.policy = policy
     }
 
     /// 子スケッチが（再）起動したことを親から通知する。次に現れる「直前とは別 UUID の
     /// 同名サーバー」へ ``poll()`` で張り替える。新サーバーが現れるまでは現在の表示を保つ。
     public func expectNewServer() {
-        awaitingSwap = true
-        swapFromUUID = connectedUUID
+        policy.expectNewServer()
     }
 
-    /// 毎フレーム呼ぶ。接続・差し替え検知をまとめて行う。
+    /// 毎フレーム呼ぶ。接続・差し替え検知・復帰動作をまとめて行う。
     public func poll() {
-        if awaitingSwap {
-            // 直前とは別 UUID の同名サーバー（＝再起動後の新しい子）が現れたら張り替える。
-            // まだ無ければ現状維持（古いフレームを表示し続けたまま待つ）。
-            if let description = sameNameServers().first(where: { uuid(of: $0) != swapFromUUID }) {
-                bind(to: description)
-                awaitingSwap = false
-                swapFromUUID = nil
-            }
-            return
+        let now = CACurrentMediaTime()
+        let servers = sameNameServers()
+        // UUID の無い記述は同一性を追えないので候補から外す（Syphon は通常必ず付ける）。
+        var byUUID: [String: [String: Any]] = [:]
+        var order: [String] = []
+        for server in servers {
+            guard let uuid = uuid(of: server), byUUID[uuid] == nil else { continue }
+            byUUID[uuid] = server
+            order.append(uuid)
         }
 
-        // 通常時: 未接続なら同名サーバーを探して接続。クライアントが無効化されたら張り替える。
-        if let client {
-            if !client.isValid, let description = sameNameServers().first {
-                bind(to: description)
-            }
-        } else if let description = sameNameServers().first {
+        let plan = policy.plan(
+            now: now,
+            candidates: order,
+            clientIsValid: client?.isValid == true,
+            lastFrameAt: currentLastFrameAt()
+        )
+
+        if let target = plan.bindTo, let description = byUUID[target] {
             bind(to: description)
         }
+        if plan.requestAnnounce {
+            requestServerAnnounce()
+        }
+        isStalled = plan.isStalled
     }
 
     /// 最新フレームのテクスチャ（無ければ nil）。呼ぶたびに最新を取得する。
     public func currentTexture() -> MTLTexture? {
-        client?.newFrameImage()
+        let texture = client?.newFrameImage()
+        // 生存確認の材料。コールバックが来ない実装/経路でも、絵が取れているなら生きている。
+        // （張り替えと同じメインスレッドから呼ばれるので世代の取り違えは起きない）
+        if texture != nil {
+            noteFrame()
+        }
+        return texture
     }
 
     public func stop() {
@@ -88,13 +127,54 @@ public final class SyphonFrameSource {
     private func bind(to description: [String: Any]) {
         client?.stop()
         connectedUUID = uuid(of: description)
+        frameLock.lock()
+        generation &+= 1
+        let generation = self.generation
+        lastFrameAt = nil  // 生存判定は張り替えのたびにやり直す。
+        frameLock.unlock()
         client = SyphonMetalClient(
             serverDescription: description,
             device: device,
             options: nil,
             newFrameHandler: { [weak self] _ in
+                self?.noteFrame(generation: generation)
                 self?.onFrame?()
             }
+        )
+    }
+
+    /// フレームを受け取ったことを記録する。旧世代（張り替え前のクライアント）からの
+    /// 呼び出しは無視する。`generation` 省略時は現在の世代として記録する。
+    private func noteFrame(generation: UInt64? = nil) {
+        frameLock.lock()
+        defer { frameLock.unlock() }
+        if let generation, generation != self.generation { return }
+        lastFrameAt = CACurrentMediaTime()
+    }
+
+    private func currentLastFrameAt() -> TimeInterval? {
+        frameLock.lock()
+        defer { frameLock.unlock() }
+        return lastFrameAt
+    }
+
+    /// 生きている Syphon サーバーに再アナウンスを促す。
+    ///
+    /// `SyphonServerDirectory` は初期化時にこの要求をブロードキャストし、各サーバーが
+    /// announce で応じることでディレクトリが埋まる。通知を取りこぼして自分のディレクトリに
+    /// エントリが載っていないとき、これを自分から投げれば載せ直せる（Issue #139 の復帰経路）。
+    ///
+    /// 通知名は Syphon が**プロセス間**でやり取りする内部定数（`SyphonPrivate.h` の
+    /// `SyphonServerAnnounceRequest`）で、公開ヘッダには無い。公開されている
+    /// `NSNotification.Name.SyphonServerAnnounce` はプロセス内通知用の別物なので、
+    /// そこからは組み立てられず、文字列で持つしかない（Syphon 3.x で不変）。
+    /// 万一 Syphon 側で名前が変われば、誰も購読しない通知が飛ぶだけで無害に劣化する。
+    private func requestServerAnnounce() {
+        DistributedNotificationCenter.default().postNotificationName(
+            Notification.Name("info.v002.Syphon.ServerAnnounceRequest"),
+            object: nil,
+            userInfo: nil,
+            deliverImmediately: true
         )
     }
 
