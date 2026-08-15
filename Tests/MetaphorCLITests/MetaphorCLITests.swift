@@ -540,32 +540,11 @@ final class MetaphorCLITests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: installPath, encoding: .utf8), "OLD-BINARY")
     }
 
-    func testUpdateCheckUsesHomebrewUpgradeHintWhenInstalledByBrew() throws {
-        let root = temporaryDirectory()
-        let console = BufferedConsole()
-        let releases = StubReleaseService()
-        releases.releases["shinyaoguri/metaphor-cli"] = GitHubRelease(
-            tagName: "v9.0.0",
-            name: "v9.0.0",
-            prerelease: false,
-            assets: []
-        )
-
-        let tool = CommandLineTool(
-            console: console,
-            processRunner: RecordingProcessRunner(),
-            releaseService: releases,
-            currentDirectory: root,
-            executablePath: "/opt/homebrew/Cellar/metaphor/0.1.0/bin/metaphor"
-        )
-
-        try tool.run(arguments: ["update", "check"])
-
-        let output = console.output.joined(separator: "\n")
-        XCTAssertTrue(output.contains("[update] metaphor-cli"))
-        XCTAssertTrue(output.contains("Run: brew upgrade metaphor"))
-        XCTAssertFalse(output.contains("Run: metaphor update self"))
-    }
+    // brew インストール時のアップグレード案内は
+    // `UpdateCommandTests.testCheckSuggestsHomebrewUpgradeWhenInstalledByBrew` へ移した。
+    // 案内が出るかどうかは up-to-date 判定の結果に依存し、判定は実行中ビルドの版
+    // （`git describe` の結果）で変わるため、版を注入できる UpdateCommand を直接
+    // 組んで検証する必要がある（#122）。
 
     func testNewCommandRefusesNonEmptyDestinationWithoutForce() throws {
         let root = temporaryDirectory()
