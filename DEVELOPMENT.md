@@ -97,6 +97,18 @@ MCP ツールは `MCPToolHandling`（`MCP/MCPProtocol.swift`）で表現され�
 - watch 系モック（`Tests/.../WatchSessionTests.swift`）: `RecordingLauncher` /
   `ManualFileWatcher`（`fireChange()` で変更を手動発火）/ `NullBinaryResolver`。
 
+### `BuildInfo` の値をテストで決め打ちしない
+
+`release.yml` は **stamp / pin を済ませてから `swift test` を走らせる**（"Stamp version" →
+"Pin default metaphor library version" → "Test"）。つまり `BuildInfo.version` は
+タグの版、`BuildInfo.defaultMetaphorVersion` は metaphor の最新安定版、
+`BuildInfo.isDevelopmentBuild` は **`false`** の状態でテストが走る。
+
+PR の `build-and-test` は stamp も pin もしないので、**この 2 つは前提が違う**。
+`isDevelopmentBuild` が真である前提や、版の文字列をリテラルで書いたテストは
+**PR では緑、リリースだけ赤**になる（実例: #121 / #144）。期待値は `BuildInfo` の値から
+組み立てるか、ビルド種別に依存する分岐は引数を取る純関数として切り出してテストする。
+
 ## Switching the metaphor used by `metaphor new` (direnv 推奨)
 
 `metaphor new` などを実行するのが **brew で入れた安定版**（`/opt/homebrew/bin/metaphor`）
