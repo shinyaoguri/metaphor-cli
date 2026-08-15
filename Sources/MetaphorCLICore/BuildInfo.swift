@@ -13,7 +13,16 @@ public enum BuildInfo {
     /// stamp 後も両者が等しくなり、stamp の有無を判定できなくなる。
     static let unstampedVersion = "0.1.0-dev"
 
-    public static let defaultMetaphorVersion = "0.5.3"
+    /// `metaphor new` が GitHub から最新リリースを引けなかったときに使う metaphor
+    /// ライブラリの版。`version` と同じくプレースホルダで、リリースビルドでは
+    /// `release.yml` の "Pin default metaphor library version" が次の行を metaphor の
+    /// 最新安定版へ書き換える（行頭からの定義にだけ当たる正規表現なので、このコメントに
+    /// 定義の形を書き写さないこと）。**リポジトリ上のこの値は現行版ではない**。
+    ///
+    /// 生成される依存は `.package(url:from:)` なので、この値は刺さる版ではなく解決範囲の
+    /// **下限**。SwiftPM の `from:` は 0.x でも次の major (`<1.0.0`) まで許すため、値が
+    /// 数世代古くても実際には最新の 0.x が解決される。
+    public static let defaultMetaphorVersion = "0.9.0"
     public static let cliRepositoryOwner = "shinyaoguri"
     public static let cliRepositoryName = "metaphor-cli"
     public static let libraryRepositoryOwner = "shinyaoguri"

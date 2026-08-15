@@ -240,6 +240,49 @@ final class MetaphorCLITests: XCTestCase {
         }
     }
 
+    /// リリース取得に失敗したときは組み込みの既定値へ落ちる。生成される依存は `from:` なので
+    /// この値は解決範囲の下限であって刺さる版ではない（#121）。
+    func testNewCommandFallsBackToBuiltInVersionWhenReleaseLookupFails() throws {
+        try withSourceTemplates {
+            let root = temporaryDirectory()
+            let console = BufferedConsole()
+            let tool = CommandLineTool(
+                console: console,
+                processRunner: RecordingProcessRunner(),
+                // 未設定リポジトリで throw する = 最新リリースを引けない状況。
+                releaseService: StubReleaseService(),
+                currentDirectory: root
+            )
+
+            try tool.run(arguments: ["new", "MySketch", "--no-resolve"])
+
+            let package = try String(
+                contentsOf: root.appendingPathComponent("MySketch/Package.swift"))
+            XCTAssertTrue(
+                package.contains("from: \"\(BuildInfo.defaultMetaphorVersion)\""),
+                "取得に失敗したら BuildInfo.defaultMetaphorVersion を下限に据える"
+            )
+
+            let warning = try XCTUnwrap(
+                console.errors.first { $0.contains("could not fetch latest metaphor release") },
+                "フォールバックしたことは黙らずに知らせる"
+            )
+            // テストは常に未 stamp の開発ビルドで走るので、プレースホルダである旨まで出る。
+            XCTAssertTrue(warning.contains("--metaphor-version"))
+        }
+    }
+
+    /// 既定値の出どころ（pin 済みか、未 pin のプレースホルダか）でフォールバック警告を出し分ける。
+    func testFallbackVersionWarningFlagsUnpinnedDefaultOnDevelopmentBuilds() {
+        let released = NewCommand.fallbackVersionWarning(version: "0.9.0", isDevelopmentBuild: false)
+        XCTAssertEqual(released, "warning: could not fetch latest metaphor release; using 0.9.0")
+
+        let development = NewCommand.fallbackVersionWarning(version: "0.9.0", isDevelopmentBuild: true)
+        XCTAssertTrue(development.hasPrefix(released), "リリースビルド向けの一文はそのまま含む")
+        XCTAssertTrue(development.contains("placeholder"), "未 pin のプレースホルダだと明かす")
+        XCTAssertTrue(development.contains("--metaphor-version"), "逃げ道を示す")
+    }
+
     func testUpdateLibraryDryRun() throws {
         let root = temporaryDirectory()
         try """
