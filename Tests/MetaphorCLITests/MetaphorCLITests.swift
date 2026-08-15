@@ -267,8 +267,13 @@ final class MetaphorCLITests: XCTestCase {
                 console.errors.first { $0.contains("could not fetch latest metaphor release") },
                 "フォールバックしたことは黙らずに知らせる"
             )
-            // テストは常に未 stamp の開発ビルドで走るので、プレースホルダである旨まで出る。
-            XCTAssertTrue(warning.contains("--metaphor-version"))
+            // 文面の出し分け自体は下の純関数テストが両分岐を見る。ここは「その関数を通っている」
+            // ことだけを確かめる。文面をリテラルで書くと、`release.yml` が stamp / pin を
+            // 済ませてから走らせるリリースビルドのテスト（= 開発ビルドではない）で落ちる。
+            XCTAssertEqual(warning, NewCommand.fallbackVersionWarning(
+                version: BuildInfo.defaultMetaphorVersion,
+                isDevelopmentBuild: BuildInfo.isDevelopmentBuild
+            ))
         }
     }
 
