@@ -9,8 +9,9 @@ metaphor new {{PROJECT_NAME}} --template {{TEMPLATE_ID}}
 ## Run
 
 ```bash
-metaphor watch --viewer   # live-reload window (recommended while iterating)
-swift run                 # plain SwiftPM run, no metaphor-cli needed
+metaphor watch              # live-reload window, kept open across rebuilds
+                            # (recommended while iterating; --no-viewer to skip the window)
+swift run                   # plain SwiftPM run, no metaphor-cli needed
 ```
 
 The sketch entry point is `Sources/{{MODULE_NAME}}/App.swift`.

@@ -6,8 +6,8 @@ sketch, edit, and re-observe** in a tight loop. Read this file first.
 
 ## The development loop (observe → edit → verify)
 
-1. The human starts a live session once: `metaphor watch --viewer`
-   (a window opens; the sketch rebuilds on every file save).
+1. The human starts a live session once: `metaphor watch`
+   (a window opens by default; the sketch rebuilds on every file save).
 2. You (the AI) work through the **`metaphor` MCP server**:
    - `snapshot` — capture the current frame as PNG + internal state
      (`frame.json`: frame / time / `probe()` values / blank warnings).
@@ -53,9 +53,10 @@ resolved; `metaphor new` resolves them for you, or run `swift package resolve`.)
 ## Run commands
 
 ```bash
-metaphor run            # build and launch once
-metaphor watch --viewer # live-reload window for the observe→edit loop
-swift run               # plain SwiftPM run
+metaphor run               # build and launch once
+metaphor watch             # live-reload window for the observe→edit loop
+metaphor watch --no-viewer # same loop without the viewer window
+swift run                  # plain SwiftPM run
 ```
 
 Use `metaphor doctor` if the sketch does not build or launch.
