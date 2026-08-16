@@ -7,12 +7,21 @@ INSTALL_BIN := $(BINDIR)/$(PRODUCT)
 FRAMEWORKDIR := $(SHAREDIR)/Frameworks
 BUILT_FRAMEWORK := .build/$(BUILD_CONFIG)/Syphon.framework
 
-.PHONY: build release test install uninstall clean doctor hooks contract
+.PHONY: setup build release test install uninstall clean doctor hooks contract
+
+# 初回セットアップ。クローン直後にこれを打つ。
+# metaphor 側の `make setup` と同じ入口（あちらはサブモジュール + Syphon ビルドも
+# 含む）。このリポジトリは `swift build` だけで動くぶん setup を打つ動機が弱く、
+# pre-push フックが入らないまま契約チェックが CI 任せになっていた。
+setup: hooks
+	@echo "Setup complete. Run 'make build' to build."
 
 build:
 	swift build
 
-# Install git hooks (pre-push cross-repo contract check)
+# Install git hooks (pre-push cross-repo contract check).
+# パスは相対のままにする — core.hooksPath の相対パスは各作業ツリーのトップレベル
+# 基準で解決されるので、worktree でもその worktree のスクリプトが走る。
 hooks:
 	@echo "Installing git hooks (core.hooksPath=scripts/hooks)..."
 	@git config core.hooksPath scripts/hooks
