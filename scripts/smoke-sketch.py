@@ -594,11 +594,16 @@ def parse_args(argv=None):
     parser.add_argument("--headless", action="store_true",
                         help="子へ METAPHOR_VIEWER=1 を渡して窓を開かせない")
     parser.add_argument("--keep", action="store_true", help="作業ディレクトリを消さない")
+    # 既定値は GH の macos-26 ランナーでの実測から。3 回連続で
+    # run（clone + metaphor のコールドビルド + 初回フレーム）が 29.0 / 31.1 / 50.0 秒、
+    # watch（起動 + 編集 + 再ビルド + フレーム）が 5.3 / 6.3 / 11.6 秒だったので、
+    # いずれも最悪値の 10 倍以上を積んである。締めすぎると遅いランナーで偽陽性、
+    # 緩めすぎると「ハングしているのに 10 分黙る」失敗になる。
     parser.add_argument("--build-timeout", type=float, default=900.0,
                         help="初回ビルドの待ち上限 (秒, 既定: %(default)s)")
     parser.add_argument("--frame-timeout", type=float, default=120.0,
                         help="フレーム 1 枚の待ち上限 (秒, 既定: %(default)s)")
-    parser.add_argument("--reload-timeout", type=float, default=600.0,
+    parser.add_argument("--reload-timeout", type=float, default=300.0,
                         help="編集からリロードまでの待ち上限 (秒, 既定: %(default)s)")
     return parser.parse_args(argv)
 

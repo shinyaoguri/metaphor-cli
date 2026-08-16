@@ -12,11 +12,6 @@ name: Sketch smoke
 # 呼び出し元は release.yml（リリースのたび・**ブロックしない**）と手動 dispatch。
 
 on:
-  # TEMPORARY(#153): workflow_dispatch は「default branch に存在する workflow」しか
-  # 起動できないので、マージ前に CI 実走の所要時間とばらつきを測れない。この push
-  # トリガーは計測のためだけに置いており、**マージ前に必ず削除する**。
-  push:
-    branches: [feat/153-ci-sketch-smoke]
   workflow_dispatch:
     inputs:
       sketch:
