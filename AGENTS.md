@@ -11,6 +11,8 @@ AI エージェント向け MCP サーバ（`mcp`）・環境診断（`doctor`�
 - **README.md** — 利用者向け。インストール・全コマンド・AI 協調（MCP）の正典
 - **DEVELOPMENT.md** — CLI 開発者向け。プロジェクト構成・新規コマンド/MCP ツール追加・direnv 切替・テンプレート編集
 - **CONTRACT.md** — metaphor ⇄ metaphor-cli のクロスリポ契約（両リポに同一内容）
+- **docs/decisions/** — 設計判断の記録（軽量 ADR）の正本。「なぜこうなっているか」はここ。
+  1 判断 1 ファイルで **状態 / 文脈 / 決定 / 影響** の 4 節。索引は [docs/decisions/README.md](docs/decisions/README.md)
 - **docs/homebrew.md** — Homebrew tap / Formula のリリース手順
 - **CHANGELOG.md** — 変更履歴の正本は [Releases](https://github.com/shinyaoguri/metaphor-cli/releases)。
   このファイルは正本へのポインタと v0.5.1 までのアーカイブで**凍結**（追記すると CI が落ちる。理由は #97）
