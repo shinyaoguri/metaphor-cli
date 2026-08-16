@@ -25,3 +25,4 @@
 | [0010](0010-releases-as-changelog.md) | 変更履歴の正本は GitHub Releases に置き、`CHANGELOG.md` は凍結する |
 | [0011](0011-issue-label-taxonomy.md) | Issue ラベルは `type:` / `status:` 体系にし、起票経路によらず自動付与する |
 | [0012](0012-editor-environment.md) | 専用エディタは作らず、VSCode の前提を同梱と `doctor` で担保する |
+| [0013](0013-stamp-vs-rebuild-trigger.md) | 刻印 (provenance) の対象とリビルドの引き金を別集合として保つ |
