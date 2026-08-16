@@ -24,7 +24,11 @@ fail=0
 [ -f "$TMPL" ] || { echo "::error::missing $TMPL"; exit 1; }
 
 # Canonical doc filenames the `api_reference` tool serves (docFiles values).
-CANON="$(grep -oE '"(sketch|full|examples)": "[^"]+"' "$HANDLER" | sed -E 's/.*: "([^"]+)"/\1/')"
+# Extracted from the docFiles literal block, NOT from a fixed list of doc keys:
+# a hardcoded key list silently drops a newly added doc from CANON, and the
+# template referencing it then fails this check for the wrong reason (#86).
+CANON="$(awk '/static let docFiles/,/^    \]$/' "$HANDLER" \
+  | grep -oE '": "[^"]+"' | sed -E 's/": "([^"]+)"/\1/')"
 if [ -z "$CANON" ]; then
   echo "::error::could not extract docFiles from $HANDLER (renamed?). Update this script."
   exit 1

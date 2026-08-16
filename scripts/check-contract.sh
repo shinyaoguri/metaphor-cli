@@ -107,6 +107,10 @@ case "$REPO" in
     check "llms-sketch.txt"
     check "docs/ai/examples-index.md"
     check "docs/ai/examples-index.json"
+    # `api_reference doc=contract` serves the wire schema straight out of this
+    # checkout, so the path itself is now part of contract point 6 (cli #86).
+    # Byte-identity of contract/ is enforced separately by check-contract-identity.sh.
+    check "contract/frame.schema.json"
     ;;
   metaphor-cli)
     # Env vars set when spawning the child sketch (contract point 2).
@@ -176,10 +180,12 @@ case "$REPO" in
     check ".github/workflows/release-on-merge.yml" \
       "release:patch"
     # AI doc filenames the `api_reference` MCP tool reads from the metaphor package.
+    # `contract/frame.schema.json` is the doc=contract default; the other six schemas
+    # are addressed as contract/<schema>.schema.json via the `schema` argument (#86).
     check "Sources/MetaphorCLICore/MCP/MetaphorDocsLocator.swift" \
       "llms.txt"
     check "Sources/MetaphorCLICore/MCP/SketchToolHandler.swift" \
-      "llms-sketch.txt" "llms.txt" "docs/ai/examples-index.md"
+      "llms-sketch.txt" "llms.txt" "docs/ai/examples-index.md" "contract/frame.schema.json"
     ;;
 esac
 
