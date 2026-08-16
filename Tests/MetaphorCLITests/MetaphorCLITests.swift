@@ -162,8 +162,9 @@ final class MetaphorCLITests: XCTestCase {
             XCTAssertTrue(labels.contains("metaphor watch"), "tasks.json should launch the watch loop")
             XCTAssertTrue(labels.contains("metaphor run"), "tasks.json should offer the one-shot run")
 
+            // 推奨する拡張 ID は doctor（#148）が探す ID でもあるので、定数を共有する。
             let extensions = try json(at: ".vscode/extensions.json")
-            XCTAssertEqual(extensions["recommendations"] as? [String], ["swiftlang.swift-vscode"])
+            XCTAssertEqual(extensions["recommendations"] as? [String], [VSCodeEnvironment.swiftExtensionID])
 
             _ = try json(at: ".vscode/settings.json")
 

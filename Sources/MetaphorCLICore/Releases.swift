@@ -259,4 +259,17 @@ public enum PackageManifestReader {
         }
         return nil
     }
+
+    /// このディレクトリが metaphor スケッチか（= metaphor を依存に宣言しているか）。
+    /// `Package.swift` の有無だけだと、metaphor-cli 自身のような無関係な Swift
+    /// パッケージでもスケッチ向けの診断が走ってしまう（#148）。`Package.resolved`
+    /// を見ないのは、`metaphor new` 直後のまだ resolve していないスケッチこそ
+    /// 診断したい相手だから。
+    public static func declaresMetaphorDependency(in packageDirectory: URL) -> Bool {
+        let packageFile = packageDirectory.appendingPathComponent("Package.swift")
+        guard let contents = try? String(contentsOf: packageFile, encoding: .utf8) else { return false }
+        return contents.split(whereSeparator: \.isNewline).contains { line in
+            line.contains(".package(") && line.localizedCaseInsensitiveContains("metaphor")
+        }
+    }
 }
