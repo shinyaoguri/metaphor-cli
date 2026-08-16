@@ -50,7 +50,8 @@ push しっぱなしで CI の赤に気付かないのを防ぐため、Claude C
 ### 主要ファイル
 
 - コマンドルータ: `Commands.swift`（`CommandLineTool`）。各コマンドは
-  `NewCommand.swift` / `RunCommand.swift` / `DoctorCommand.swift` /
+  `NewCommand.swift` / `RunCommand.swift` / `DoctorCommand.swift`
+  （エディタ側の判定は `VSCodeEnvironment.swift` の純関数へ切り出し）/
   `WatchCommand.swift`（`Watch*`/`ProcessLaunching`/`FileWatching` に分割）/
   `UpdateCommand.swift` / `MCPCommand.swift`。
 - watch コア: `WatchSession.swift`（ビルド→起動→再起動の制御）、`ProcessLaunching.swift`

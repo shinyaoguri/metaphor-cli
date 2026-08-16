@@ -26,7 +26,7 @@ metaphor run
 | `metaphor watch` | ソース変更を監視し、ライブビューア窓を保ったまま再ビルド差し替え |
 | `metaphor mcp` | AI エージェント向け MCP サーバ（[AI と協調する](#ai-と協調する)） |
 | `metaphor update` | CLI 本体と `metaphor` ライブラリの更新を確認・適用 |
-| `metaphor doctor` | Swift / Xcode / テンプレート / Syphon 環境の診断 |
+| `metaphor doctor` | Swift / Xcode / テンプレート / Syphon / エディタ環境の診断 |
 | `metaphor examples` | 利用できるテンプレートの一覧表示 |
 | `metaphor version [--json]` | CLI 本体と、いるディレクトリで解決されている `metaphor` ライブラリの版を表示（ネットワークは叩かない） |
 
@@ -263,19 +263,34 @@ Homebrew でインストールした場合、CLI 本体の更新は Homebrew に
 
 ### `metaphor doctor`
 
-開発環境をまとめて診断し、項目ごとに `[ok]` / `[warn]` を表示します。何かうまく動かないとき・バグ報告するときに最初に実行してください（[Troubleshooting](#troubleshooting) / [フィードバック](#フィードバック--issue-報告)）。
+開発環境をまとめて診断し、項目ごとに `[ok]` / `[warn]` / `[info]` を表示します。何かうまく動かないとき・バグ報告するときに最初に実行してください（[Troubleshooting](#troubleshooting) / [フィードバック](#フィードバック--issue-報告)）。
 
 ```console
 $ metaphor doctor
 metaphor doctor
+metaphor-cli 0.11.0 (built 2026-08-16 11:44:05)
+metaphor     0.9.0 (Package.resolved)
 [ok] Swift: Apple Swift version 6.3.3 (swiftlang-6.3.3.1.3 clang-2100.1.1.101)
 [ok] Xcode: Xcode 26.6
 [ok] Package.swift found
 [ok] 7 project templates available (/opt/homebrew/Cellar/metaphor/0.4.0/share/metaphor/templates)
 [ok] Syphon.framework loaded: /opt/homebrew/Cellar/metaphor/0.4.0/libexec/Syphon.framework/Versions/A/Syphon
+[ok] VSCode Swift extension: swiftlang.swift-vscode 2.17.20260702
+[ok] .sourcekit-lsp/config.json: backgroundIndexing disabled
+[warn] Sketch not built yet (.build/debug not found) — editor completion needs one `swift build`
 ```
 
-診断項目は、Swift / Xcode のバージョン、カレントディレクトリの `Package.swift` の有無（スケッチ外で実行すると `[warn]`）、プロジェクトテンプレートの配置、Syphon.framework のロード元です。`[warn]` の項目に対応する機能（テンプレート生成、ライブビューア / Syphon 出力など）が使えない状態を示します。
+診断項目は、実行中の CLI と解決済みライブラリの版、Swift / Xcode のバージョン、カレントディレクトリの `Package.swift` の有無（スケッチ外で実行すると `[warn]`）、プロジェクトテンプレートの配置、Syphon.framework のロード元、そしてエディタ（VSCode）側の前提です。`[warn]` の項目に対応する機能（テンプレート生成、ライブビューア / Syphon 出力など）が使えない状態を示します。
+
+エディタ側の 3 項目は、`.vscode/` を同梱していても補完・hover が**無言で出ない**ときに、原因を切り分けるためのものです。CLI の動作自体は妨げないので `[warn]` 止まりです。
+
+| 項目 | `[warn]` のときにすること |
+|---|---|
+| Swift 拡張（`swiftlang.swift-vscode`） | VSCode の拡張機能から入れる（生成物の `.vscode/extensions.json` が推奨しているもの） |
+| `.sourcekit-lsp/config.json` | 背景インデックスが `import metaphor` を壊すため切っておく（[metaphor#578](https://github.com/shinyaoguri/metaphor/issues/578)）。古い版で生成したスケッチには無いので、`{ "backgroundIndexing": false }` を置く |
+| ビルド成果物（`.build/debug`） | 一度 `swift build`（または `metaphor run` / `metaphor watch`）を通す。補完はビルド成果物を参照する |
+
+Swift 拡張の在否は `~/.vscode/extensions` を見て判定します（`code` コマンドが PATH に無くても効きます）。VSCode 自体が無いマシンでは欠落ではないので `[info]` を出して以降を飛ばします。`.sourcekit-lsp/config.json` とビルド成果物は、metaphor に依存している `Package.swift` があるときだけ検査します。
 
 ### `metaphor examples`
 
@@ -431,13 +446,14 @@ AI エージェントで作業する場合の起点は [AGENTS.md](AGENTS.md)、
 
 ## Troubleshooting
 
-まず [`metaphor doctor`](#metaphor-doctor) を実行すると、Swift / Xcode / テンプレート / Syphon.framework の状態がまとめて確認できます。
+まず [`metaphor doctor`](#metaphor-doctor) を実行すると、Swift / Xcode / テンプレート / Syphon.framework / エディタ（VSCode）側の前提の状態がまとめて確認できます。
 
 - **`metaphor watch` のライブビューア窓が黒いまま** — 子スケッチの初回ビルド中か、ビルド失敗の可能性。ターミナルの `[watch]` ログを確認してください。ビルド失敗時は直前のスケッチを維持し、`[watch] ビルド失敗 …` を表示します。
 - **`metaphor watch` が遅い／毎回フルビルドになる** — バイナリ解決に失敗すると `swift run` にフォールバックします。`[watch] バイナリ解決に失敗 …` が出る場合は、パッケージに executable プロダクトがあるか、`swift build --show-bin-path` が通るか確認。
 - **AI（MCP）から観測できない** — `metaphor watch`（共有セッション）が起動しているか、**先に `watch` → 後から AI クライアント**の順序で起動したか、`metaphor watch --no-probe` で無効化していないかを確認。順序が逆だと MCP は別インスタンスを観測します（直し方は [共有セッション](#人間と-ai-で同じスケッチを共有する共有セッション) を参照）。`metaphor mcp` は同じディレクトリで実行します。
 - **AI クライアントが MCP サーバに接続できない** — `.mcp.json` / `claude mcp add` の登録は **PATH 上の `metaphor`** を起動します。`which metaphor` で CLI が見つかるか確認してください（brew 未導入の環境や direnv での開発版⇄brew 版切替中は、見つからず黙って失敗することがあります）。
 - **`metaphor` がローカル開発版か brew 版か分からない** — `command -v metaphor` で実体パスを確認。direnv の設定は [DEVELOPMENT.md](DEVELOPMENT.md) を参照。
+- **エディタで補完・hover が何も出ない** — 失敗が無言なので、まずスケッチの中で [`metaphor doctor`](#metaphor-doctor) を実行してください。Swift 拡張の不在・背景インデックス（`.sourcekit-lsp/config.json`）・未ビルド（`.build/debug`）のどれなのかが `[warn]` で分かります。
 - **`metaphor update` が固まる** — GitHub への通信待ち（最大 60 秒でタイムアウト）。ネットワーク到達性を確認してください。Homebrew 導入版は `brew upgrade` を案内します。
 - **`.app` に包んだスケッチで snapshot / params が効かない** — `.app` を LaunchServices（`open` / Dock / ログイン項目）から起動すると **cwd が `/`** になり、スケッチが `.metaphor/` を書けない場所に作ろうとします。`METAPHOR_STATE_DIR` に置き場を渡してください（`metaphor run` / `metaphor watch` / `metaphor mcp` 経由なら自動で渡ります）。
 
