@@ -43,10 +43,20 @@ public final class SketchToolHandler: MCPToolHandling {
     }
 
     /// `api_reference` の `doc` 引数 → docs ルート相対のファイルパス。
+    ///
+    /// `contract` の既定は `frame.schema.json`（snapshot 出力の構造）。他のスキーマは
+    /// `schema` 引数で選ぶ（`contractSchemas`）。docs ルート＝依存先 metaphor の checkout なので、
+    /// 返るスキーマは**依存バージョンぴったり**のもの。
     static let docFiles: [String: String] = [
         "sketch": "llms-sketch.txt",
         "full": "llms.txt",
         "examples": "docs/ai/examples-index.md",
+        "contract": "contract/frame.schema.json",
+    ]
+
+    /// `doc=contract` の `schema` 引数で選べる wire スキーマ（`contract/<name>.schema.json`）。
+    static let contractSchemas = [
+        "frame", "request", "sequence", "params", "param-set-request", "state", "state-save-request",
     ]
 
     /// 子スケッチが受け取る入力イベント種別（stdin JSON Lines の `t`）。
@@ -171,14 +181,25 @@ public final class SketchToolHandler: MCPToolHandling {
                 name: "api_reference",
                 description: "依存先 metaphor ライブラリの API ドキュメントを返す。"
                     + "新しい API を使う前に必ず参照する。doc=sketch は簡潔な作法ガイド、"
-                    + "doc=full は全 API リファレンス、doc=examples は近傍のサンプル索引。",
+                    + "doc=full は全 API リファレンス、doc=examples は近傍のサンプル索引、"
+                    + "doc=contract は .metaphor/ の wire スキーマ(JSON Schema)。"
+                    + "snapshot が返す frame.json の構造を正確に知りたいときは doc=contract。",
                 inputSchema: [
                     "type": "object",
                     "properties": [
                         "doc": [
                             "type": "string",
-                            "enum": ["sketch", "full", "examples"],
-                            "description": "sketch=作法ガイド(既定) / full=全API / examples=サンプル索引。",
+                            "enum": ["sketch", "full", "examples", "contract"],
+                            "description":
+                                "sketch=作法ガイド(既定) / full=全API / examples=サンプル索引 / contract=wire スキーマ。",
+                        ],
+                        "schema": [
+                            "type": "string",
+                            "enum": Self.contractSchemas,
+                            "description":
+                                "doc=contract のときのみ有効。返すスキーマを選ぶ（既定 frame）。"
+                                + "frame/sequence/params/state は metaphor が出力するもの、"
+                                + "request/param-set-request/state-save-request は cli・AI が書くもの。",
                         ],
                         "grep": [
                             "type": "string",
@@ -322,9 +343,26 @@ public final class SketchToolHandler: MCPToolHandling {
 
     private func handleAPIReference(_ arguments: [String: Any]) -> MCPToolResult {
         let doc = (arguments["doc"] as? String) ?? "sketch"
-        guard let relative = Self.docFiles[doc] else {
+        guard var relative = Self.docFiles[doc] else {
             let kinds = Self.docFiles.keys.sorted().joined(separator: ", ")
             return .text("api_reference: 'doc' は \(kinds) のいずれかにしてください。", isError: true)
+        }
+        // `schema` は doc=contract 専用。他の doc に付いていたら黙って無視せずエラーにする
+        // （無視すると「指定したはずのスキーマと違うものが返った」ことに気付けない）。
+        var label = doc
+        if let schema = arguments["schema"] as? String {
+            guard doc == "contract" else {
+                return .text(
+                    "api_reference: 'schema' は doc=contract のときだけ指定できます (doc=\(doc) が指定されました)。",
+                    isError: true
+                )
+            }
+            guard Self.contractSchemas.contains(schema) else {
+                let kinds = Self.contractSchemas.sorted().joined(separator: ", ")
+                return .text("api_reference: 'schema' は \(kinds) のいずれかにしてください。", isError: true)
+            }
+            relative = "contract/\(schema).schema.json"
+            label = "\(doc):\(schema)"
         }
         guard let root = docsRootProvider() else {
             return .text(
@@ -335,11 +373,12 @@ public final class SketchToolHandler: MCPToolHandling {
         }
         let fileURL = root.appendingPathComponent(relative)
         guard let contents = try? String(contentsOf: fileURL, encoding: .utf8) else {
-            return .text(
-                "api_reference: \(relative) が見つかりません (\(root.path))。"
-                    + "ライブラリ側で `make llms-txt` / `make examples-index` を実行してください。",
-                isError: true
-            )
+            // wire スキーマは生成物ではなくリポジトリに置かれた正典なので、
+            // 欠けているなら「生成し忘れ」ではなく「依存先が contract/ を持たない版」。
+            let hint = doc == "contract"
+                ? "依存先 metaphor の checkout に contract/ がありません。contract/ を同梱するバージョンへ更新してください。"
+                : "ライブラリ側で `make llms-txt` / `make examples-index` を実行してください。"
+            return .text("api_reference: \(relative) が見つかりません (\(root.path))。" + hint, isError: true)
         }
 
         guard let needle = arguments["grep"] as? String, !needle.isEmpty else {
@@ -349,7 +388,7 @@ public final class SketchToolHandler: MCPToolHandling {
             .split(separator: "\n", omittingEmptySubsequences: false)
             .filter { $0.range(of: needle, options: .caseInsensitive) != nil }
         if matched.isEmpty {
-            return .text("api_reference(\(doc)) grep \"\(needle)\": 一致する行はありません。")
+            return .text("api_reference(\(label)) grep \"\(needle)\": 一致する行はありません。")
         }
         return .text(matched.joined(separator: "\n"))
     }

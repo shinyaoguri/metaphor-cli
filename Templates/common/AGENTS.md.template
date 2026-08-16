@@ -39,6 +39,8 @@ metaphor version this project depends on:
 - `api_reference doc=sketch` — compact sketch-authoring guide (start here).
 - `api_reference doc=full` — full generated API reference (use `grep` to narrow).
 - `api_reference doc=examples` — index of nearby examples to copy patterns from.
+- `api_reference doc=contract` — JSON Schema of the files under `.metaphor/`
+  (defaults to `frame.json`; pass `schema=params`, `schema=sequence`, … for the others).
 
 Fallback (if MCP is unavailable): read these files directly from the metaphor
 library at `{{METAPHOR_AI_DOCS_PATH}}`:
@@ -46,6 +48,7 @@ library at `{{METAPHOR_AI_DOCS_PATH}}`:
 - `{{METAPHOR_AI_DOCS_PATH}}/llms-sketch.txt`
 - `{{METAPHOR_AI_DOCS_PATH}}/llms.txt`
 - `{{METAPHOR_AI_DOCS_PATH}}/docs/ai/examples-index.md`
+- `{{METAPHOR_AI_DOCS_PATH}}/contract/frame.schema.json`
 
 (For a release-pinned dependency this path appears once dependencies are
 resolved; `metaphor new` resolves them for you, or run `swift package resolve`.)
@@ -101,9 +104,12 @@ under `custom`:
 ```
 
 This example is intentionally minimal; snapshots may carry more fields (color
-`stats`, measured `performance`, `customTypes`, …). The canonical schema is
-[`contract/frame.schema.json`](https://github.com/shinyaoguri/metaphor/blob/main/contract/frame.schema.json)
-in the metaphor repositories.
+`stats`, measured `performance`, `customTypes`, …). For the canonical schema, read
+the copy that matches the version this project depends on — `api_reference
+doc=contract`, or `{{METAPHOR_AI_DOCS_PATH}}/contract/frame.schema.json` directly.
+(Without a resolved dependency, the `main`-branch copy is on
+[GitHub](https://github.com/shinyaoguri/metaphor/blob/main/contract/frame.schema.json),
+which may be ahead of your version.)
 
 Probe is enabled automatically under `metaphor watch` and `metaphor mcp`.
 

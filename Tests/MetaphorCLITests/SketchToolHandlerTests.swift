@@ -196,6 +196,11 @@ final class SketchToolHandlerTests: XCTestCase {
         try "compact sketch guide".write(to: root.appendingPathComponent("llms-sketch.txt"), atomically: true, encoding: .utf8)
         try "ALPHA api\nBETA api\ngamma api".write(to: root.appendingPathComponent("llms.txt"), atomically: true, encoding: .utf8)
         try "examples index".write(to: aiDir.appendingPathComponent("examples-index.md"), atomically: true, encoding: .utf8)
+        // wire スキーマは metaphor の checkout に同梱されているものを読む（契約点 6）。
+        let contractDir = root.appendingPathComponent("contract")
+        try FileManager.default.createDirectory(at: contractDir, withIntermediateDirectories: true)
+        try "frame schema".write(to: contractDir.appendingPathComponent("frame.schema.json"), atomically: true, encoding: .utf8)
+        try "params schema".write(to: contractDir.appendingPathComponent("params.schema.json"), atomically: true, encoding: .utf8)
         return root
     }
 
@@ -242,5 +247,51 @@ final class SketchToolHandlerTests: XCTestCase {
         let empty = URL(fileURLWithPath: NSTemporaryDirectory())
         let result = makeHandler(Box(), docsRoot: empty).call(name: "api_reference", arguments: ["doc": "sketch"])
         XCTAssertTrue(result.isError)
+    }
+
+    // MARK: - api_reference (doc=contract)
+
+    func testAPIReferenceContractDefaultsToFrameSchema() throws {
+        let root = try makeDocsRoot()
+        let result = makeHandler(Box(), docsRoot: root).call(name: "api_reference", arguments: ["doc": "contract"])
+        XCTAssertFalse(result.isError)
+        XCTAssertEqual(result.content.first?["text"] as? String, "frame schema")
+    }
+
+    func testAPIReferenceContractSelectsSchema() throws {
+        let root = try makeDocsRoot()
+        let result = makeHandler(Box(), docsRoot: root)
+            .call(name: "api_reference", arguments: ["doc": "contract", "schema": "params"])
+        XCTAssertFalse(result.isError)
+        XCTAssertEqual(result.content.first?["text"] as? String, "params schema")
+    }
+
+    func testAPIReferenceInvalidContractSchema() throws {
+        let root = try makeDocsRoot()
+        let result = makeHandler(Box(), docsRoot: root)
+            .call(name: "api_reference", arguments: ["doc": "contract", "schema": "nope"])
+        XCTAssertTrue(result.isError)
+        let text = result.content.first?["text"] as? String
+        XCTAssertTrue(text?.contains("param-set-request") == true, "有効な schema の一覧を示すこと: \(text ?? "")")
+    }
+
+    /// `schema` を doc=contract 以外に付けたら、黙って無視せずエラーにする。
+    func testAPIReferenceSchemaRejectedForNonContractDoc() throws {
+        let root = try makeDocsRoot()
+        let result = makeHandler(Box(), docsRoot: root)
+            .call(name: "api_reference", arguments: ["doc": "sketch", "schema": "frame"])
+        XCTAssertTrue(result.isError)
+        let text = result.content.first?["text"] as? String
+        XCTAssertTrue(text?.contains("doc=contract") == true, "doc=contract 専用である旨を示すこと: \(text ?? "")")
+    }
+
+    /// contract/ を持たない古い metaphor を指したとき、生成物向けの案内を出さない。
+    func testAPIReferenceContractMissingDirectoryHint() {
+        let empty = URL(fileURLWithPath: NSTemporaryDirectory())
+        let result = makeHandler(Box(), docsRoot: empty).call(name: "api_reference", arguments: ["doc": "contract"])
+        XCTAssertTrue(result.isError)
+        let text = result.content.first?["text"] as? String
+        XCTAssertTrue(text?.contains("contract/ がありません") == true, "checkout の更新を促すこと: \(text ?? "")")
+        XCTAssertFalse(text?.contains("make llms-txt") == true, "生成物向けの案内は出さないこと: \(text ?? "")")
     }
 }
