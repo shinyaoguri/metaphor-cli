@@ -1,0 +1,94 @@
+name: Sketch smoke
+
+# 実スケッチを `metaphor run` / `metaphor watch` で動かすスモーク（Issue #153）。
+#
+# ci.yml の検査は「テンプレートを生成して build が通る」までで、育った実物の
+# スケッチを動かして初めて出る穴（#139 のリロード後にフレームが来ない、#133 の
+# `.metaphor/` の置き場）を拾えない。ここが見るのは CLI 固有の経路
+# ＝ run / watch / ホットリロードが端から端まで生きていること。
+#
+# 毎 PR では回さない。metaphor 本体のフルビルドを伴うので分単位かかり、
+# タイムアウト見積もりの甘さがそのまま偽陽性になる（Issue #153 の注意点）。
+# 呼び出し元は release.yml（リリースのたび・**ブロックしない**）と手動 dispatch。
+
+on:
+  workflow_dispatch:
+    inputs:
+      sketch:
+        description: '対象スケッチ（metaphor-sketches 内のパス）'
+        required: false
+        type: string
+        default: '2026/0718-hello'
+      headless:
+        description: '窓を開かず METAPHOR_VIEWER=1 で走らせる'
+        required: false
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      sketch:
+        required: false
+        type: string
+        default: '2026/0718-hello'
+      headless:
+        required: false
+        type: boolean
+        default: false
+      blocking:
+        # false = 失敗しても job は緑のまま（job summary と ::warning にだけ出す）。
+        # release.yml からはこちらで呼ぶ ＝ スモークの偽陽性でリリースを止めない。
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: sketch-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: macos-26
+    # 内訳は CLI のビルド + metaphor 本体のフルビルド 2 回（run / watch）。
+    # スクリプト側の待ち上限（--build-timeout ほか）より外側に置く安全網。
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.4.app
+
+      - name: Build CLI
+        run: swift build
+
+      - name: Run sketch smoke
+        env:
+          SKETCH: ${{ inputs.sketch }}
+          HEADLESS: ${{ inputs.headless }}
+          BLOCKING: ${{ inputs.blocking }}
+        run: |
+          set -uo pipefail
+          SKETCH="${SKETCH:-2026/0718-hello}"
+          args=(--sketch "$SKETCH")
+          if [ "${HEADLESS:-false}" = "true" ]; then
+            args+=(--headless)
+          fi
+          if python3 scripts/smoke-sketch.py "${args[@]}"; then
+            echo "✅ sketch smoke PASS — \`$SKETCH\`" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "❌ sketch smoke FAIL — \`$SKETCH\`（子プロセスのログは artifact \`sketch-smoke-logs\`）" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${BLOCKING:-true}" = "true" ]; then
+            exit 1
+          fi
+          echo "::warning::実スケッチのスモークが失敗しました（可視化のみ。リリースは止めていません — Issue #153）"
+
+      # 失敗の診断は標準エラーにも出るが、子プロセスのログ全文はここにしか残らない。
+      # 「ビルドが遅かったのか、フレームが来なかったのか」はログ全文でしか分かれない。
+      - name: Upload child process logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sketch-smoke-logs
+          path: .smoke-logs/
+          if-no-files-found: ignore
+          retention-days: 14

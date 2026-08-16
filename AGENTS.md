@@ -28,6 +28,7 @@ make release           # リリースビルド
 make install           # ~/.local 等へインストール（Syphon.framework 同梱）
 make doctor            # 環境診断
 ./scripts/check-contract.sh   # metaphor ⇄ metaphor-cli 契約チェック
+python3 scripts/smoke-sketch.py   # 実スケッチを run / watch で動かすスモーク（#153。数分かかる）
 ```
 
 ## Cross-Repo Contract (metaphor ⇄ metaphor-cli)

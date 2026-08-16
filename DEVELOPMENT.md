@@ -106,6 +106,42 @@ MCP ツールは `MCPToolHandling`（`MCP/MCPProtocol.swift`）で表現され�
 - watch 系モック（`Tests/.../WatchSessionTests.swift`）: `RecordingLauncher` /
   `ManualFileWatcher`（`fireChange()` で変更を手動発火）/ `NullBinaryResolver`。
 
+### 実スケッチのスモーク（`scripts/smoke-sketch.py`）
+
+`swift test` と `check-templates.sh` が見ているのは「生成直後の雛形がビルドできる」までで、
+**育った実物のスケッチを動かして初めて出る穴**は拾えません（#139 のリロード後にフレームが
+来ない、#133 の `.metaphor/` の置き場は、どちらも人が作品を動かしていて偶然気付いたもの）。
+そこを埋めるのがこのスモークで、[metaphor-sketches](https://github.com/shinyaoguri/metaphor-sketches)
+の作品を 1 本取り出して実際に走らせます（Issue #153）。
+
+```bash
+swift build                                        # 先に CLI を建てる
+python3 scripts/smoke-sketch.py                    # run + watch
+python3 scripts/smoke-sketch.py --only watch       # ホットリロードだけ見る
+python3 scripts/smoke-sketch.py --sketch-dir ~/work/my-sketch --keep
+```
+
+PASS の根拠は `.metaphor/probe/current/frame.json` の mtime です。このファイルは
+`request.json` への**応答としてのみ**書かれる（CONTRACT.md 契約点 4）ので、
+スモークは自分でリクエストを書かず `--metrics` を付けて **CLI 自身に書かせます**。
+mtime が進む ＝ CLI → 子 → Probe → CLI の往復が生きている、という判定です。
+watch 側はさらに「編集 → `[watch] リロードしました` → **その後に**新しいフレーム」まで
+見ます（#139 と同じ症状を捕まえる要はこの順序で、リロード前のフレームを認めると
+素通りします）。
+
+CI では [`sketch-smoke.yml`](.github/workflows/sketch-smoke.yml) が持ちます。毎 PR では
+回さず（metaphor 本体のフルビルドを伴うため分単位かかる）、`release.yml` から
+`blocking: false` で呼ぶ ＝ **リリースのたびに走るがリリースは止めない**。手で回すときは
+`gh workflow run sketch-smoke.yml`。
+
+flaky になったときの調整点は、まずタイムアウト（`--build-timeout` / `--frame-timeout` /
+`--reload-timeout`）、次に対象スケッチ（`--sketch`。依存が薄くビルドの速いものを選ぶ）。
+窓を開けない環境では `--headless`（子へ `METAPHOR_VIEWER=1` = 契約点 5）に落とせます。
+
+判定に関わる純ロジックは `scripts/tests/test_smoke_sketch.py` が固定していて、
+CI の `python3 -m unittest discover -s scripts/tests` で毎 PR 走ります。スモーク本体が
+重くて回らないぶん、**判定が緩む形の壊れ方**（古いフレームで PASS する等）はここで止めます。
+
 ### `BuildInfo` の値をテストで決め打ちしない
 
 `release.yml` は **stamp / pin を済ませてから `swift test` を走らせる**（"Stamp version" →

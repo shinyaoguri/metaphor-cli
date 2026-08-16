@@ -33,6 +33,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # 実スケッチの run / watch スモーク（Issue #153）。release job は needs しない
+  # ＝ **リリースをブロックしない**。ビルド時間とタイムアウト見積もりの都合で
+  # flaky になりやすく、偽陽性でリリースを止めると次から誰も見なくなるため、
+  # 最初は「リリースのたびに走らせて結果を可視化するだけ」に留める
+  # （blocking: false = 失敗しても job は緑のまま、job summary と warning に出す）。
+  # 連続して緑を出せるようになったら blocking を外し、release へ needs で
+  # 繋いで本当のゲートへ昇格させる。
+  sketch-smoke:
+    uses: ./.github/workflows/sketch-smoke.yml
+    with:
+      blocking: false
+
   release:
     runs-on: macos-26
     steps:
