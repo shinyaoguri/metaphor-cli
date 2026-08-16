@@ -12,6 +12,10 @@ DerivedData/
 # written when running watch/mcp/probe inside the repo
 .metaphor/
 
+# 実スケッチのスモーク (scripts/smoke-sketch.py) が残す子プロセスのログ
+# CI は artifact として拾うが、手元では消えて構わない
+.smoke-logs/
+
 # Python bytecode cache (scripts/measure-roundtrip.py 等の実行で生成)
 __pycache__/
 *.pyc
