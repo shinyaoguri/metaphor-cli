@@ -19,6 +19,7 @@ AI エージェント向け MCP サーバ（`mcp`）・環境診断（`doctor`�
 ## Build / Test
 
 ```bash
+make setup             # 初回のみ: pre-push フック（契約チェック）を導入
 swift build            # ビルド
 swift test             # テスト
 make release           # リリースビルド

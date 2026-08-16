@@ -1,14 +1,17 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
       "Bash(swift build:*)",
       "Bash(swift test:*)",
+      "Bash(swift run:*)",
       "Bash(swift package describe:*)",
       "Bash(swift package dump-package:*)",
       "Bash(make build:*)",
       "Bash(make test:*)",
       "Bash(make contract:*)",
       "Bash(make doctor:*)",
+      "Bash(python3 -m unittest:*)",
       "Bash(./scripts/check-contract.sh:*)",
       "Bash(./scripts/check-contract-schema.sh:*)",
       "Bash(./scripts/check-contract-identity.sh:*)",
@@ -19,6 +22,7 @@
       "Bash(git show:*)",
       "Bash(git branch:*)",
       "Bash(git tag:*)",
+      "Bash(git fetch:*)",
       "Bash(gh pr list:*)",
       "Bash(gh pr view:*)",
       "Bash(gh pr checks:*)",
@@ -29,6 +33,20 @@
       "Bash(gh run view:*)",
       "Bash(gh release list:*)",
       "Bash(gh release view:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" || exit 0; [ \"$(git config core.hooksPath)\" = \"scripts/hooks\" ] || git config core.hooksPath scripts/hooks",
+            "async": true,
+            "statusMessage": "Installing git hooks"
+          }
+        ]
+      }
     ]
   }
 }

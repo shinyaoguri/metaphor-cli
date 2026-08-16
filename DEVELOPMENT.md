@@ -9,6 +9,7 @@ sibling リポジトリ [shinyaoguri/metaphor](https://github.com/shinyaoguri/me
 ## Build & Test
 
 ```bash
+make setup                # 初回のみ: pre-push フック（クロスリポ契約チェック）を導入
 swift build               # デバッグビルド
 swift test                # テスト実行
 swift run metaphor --help # ローカルビルドを直接実行
@@ -18,6 +19,13 @@ make install              # release ビルドを ~/.local に導入（Syphon.fra
 
 対象は macOS 14.0+ / Swift 5.10+。外部依存は Syphon.xcframework のみ（`Package.swift` で
 GitHub Release からピン留め取得、checksum 検証あり）。
+
+**クローン直後に `make setup` を打ってください。** このリポジトリは `swift build` だけで
+動くので setup を打つ動機が弱く、実際 `core.hooksPath` が未設定のまま
+[クロスリポ契約](#cross-repo-contract)のチェックが CI 任せになっていた前例があります
+（sibling の metaphor は Syphon ビルドを伴うので自然に打たれる）。打ち忘れても
+Claude Code のセッション開始時に `.claude/settings.json` の SessionStart フックが
+同じ設定を入れます（設定済みなら何もしません）。
 
 ### CI が赤いまま終わらせない（Stop hook）
 
@@ -235,7 +243,10 @@ Templates/
 AI ドキュメントの場所などを共有契約として持ちます。詳細と変更ルールは [CONTRACT.md](CONTRACT.md)。
 
 - `make contract` でトークン存在チェックと CONTRACT.md のクロスリポ同一性チェックを実行。
-- `make hooks` で pre-push フックを導入すると、push 前に上記を自動チェックします。
+- 同じ 2 つを push 前に自動実行する pre-push フック（`scripts/hooks/pre-push`）を
+  `make setup`（単体で入れるなら `make hooks`）が導入します。`core.hooksPath` が
+  未設定だとフックは**黙って効かない**ので、`git config core.hooksPath` が
+  `scripts/hooks` を返すことで有効化を確認できます。
 
 ### Syphon pin bump PR の処理手順
 
