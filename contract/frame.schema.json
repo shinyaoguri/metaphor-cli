@@ -8,7 +8,7 @@
   "required": ["schemaVersion", "id", "frame", "time", "size", "custom", "customTypes", "warnings"],
   "properties": {
     "schemaVersion": {
-      "description": "スキーマバージョン。現行 = 4 (v2:stats / v3:customTypes / v4:sourceStamp)。bump は破壊的変更。",
+      "description": "スキーマバージョン。現行 = 4 (v2:stats / v3:customTypes / v4:sourceStamp)。v4 のまま additive 追加されたキー: performance (#271) / params (#424) / shaders (#671) — consumer が解釈しなくても既存機能が成立するため据え置き。bump は破壊的変更 (キーのリネーム/削除/型変更/意味の変更)。判定規則は CONTRACT.md の「schemaVersion bump 規則」。",
       "const": 4
     },
     "id": {
