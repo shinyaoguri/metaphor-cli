@@ -17,8 +17,8 @@ let syphonTarget: Target = useLocalSyphon
     ? .binaryTarget(name: "Syphon", path: localSyphonPath)
     : .binaryTarget(
         name: "Syphon",
-        url: "https://github.com/shinyaoguri/metaphor/releases/download/v0.9.0/Syphon.xcframework.zip",
-        checksum: "aa90fa9f6873d05301389653f1e8b82cbc41657cb68e4d9159f858193985c48c"
+        url: "https://github.com/shinyaoguri/metaphor/releases/download/v0.10.0/Syphon.xcframework.zip",
+        checksum: "fb0a30178dfc31dcc4236750b12cb0debf57c4455c2fe4d806c2e8a22bddc0f2"
     )
 
 let package = Package(
