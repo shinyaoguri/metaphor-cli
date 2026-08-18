@@ -175,8 +175,8 @@ consumer（`metaphor-cli` の `ViewerWindow.swift`）の両方 + 契約点 3 の
 enum・`schemaVersion`）の正典は `contract/*.schema.json`**（JSON Schema draft 2020-12、
 両リポジトリに同一内容で置く）。Swift 実装（`Sources/MetaphorCore/Probe/` /
 `Sources/MetaphorCore/Parameters/` / `Sources/MetaphorCore/State/`）が意味の正典で、
-スキーマはそれを機械可読に写したもの。設計判断は [docs/adr/0004-wire-schema-canon-vs-shared-types.md](docs/adr/0004-wire-schema-canon-vs-shared-types.md)
-（Issue #119 案D 不採用・案C+ 採用）と [docs/design/external-coupling-and-contract.md](docs/design/external-coupling-and-contract.md)。
+スキーマはそれを機械可読に写したもの。設計判断は [docs/adr/0004-wire-schema-canon-vs-shared-types.md](https://github.com/shinyaoguri/metaphor/blob/main/docs/adr/0004-wire-schema-canon-vs-shared-types.md)
+（Issue #119 案D 不採用・案C+ 採用）と [docs/design/external-coupling-and-contract.md](https://github.com/shinyaoguri/metaphor/blob/main/docs/design/external-coupling-and-contract.md)。
 
 - **なぜ型共有ではないか**: consumer（cli）は Probe 契約型を decode せず `JSONSerialization` +
   `[String: Any]` で `request.json` を手組みするため、共有 SwiftPM 型ではコンパイル時保証が
@@ -242,7 +242,7 @@ consumer がタイムアウトではなく id 一致で失敗を検知できる�
 ### Syphon フレームのアルファ（契約点 5 の補足）
 
 `metaphor` が publish するフレームは **premultiplied alpha** です。レンダーターゲットが
-premultiplied で（[ADR-0012](docs/adr/0012-alpha-semantics.md)）、`MetaphorSyphon` は
+premultiplied で（[ADR-0012](https://github.com/shinyaoguri/metaphor/blob/main/docs/adr/0012-alpha-semantics.md)）、`MetaphorSyphon` は
 それを**変換せず無加工で** Syphon サーバーへ渡します（`Sources/MetaphorSyphon/SyphonOutput.swift`）。
 
 - **受け手は premultiplied `over` で合成すること** — `result = src.rgb + dst.rgb * (1 - src.a)`。
