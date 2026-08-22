@@ -231,8 +231,7 @@ final class DoctorCommandTests: XCTestCase {
             console: console,
             processRunner: RecordingProcessRunner(),
             currentDirectory: currentDirectory ?? temporaryDirectory(),
-            home: home ?? temporaryDirectory(),
-            loadedImagePaths: { [] }
+            home: home ?? temporaryDirectory()
         ).run(arguments: [])
         return console.output.joined(separator: "\n") + "\n"
     }

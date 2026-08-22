@@ -4,8 +4,9 @@
 #
 # Validates the canonical example payloads in contract/examples/ against the
 # JSON Schemas in contract/*.schema.json. This is the machine-readable half of
-# the Probe file contract (CONTRACT.md point 4): grep (check-contract.sh) guards
-# non-JSON tokens, this guards JSON structure/value-range/enum/schemaVersion.
+# the file contracts (CONTRACT.md points 4 / 7 / 8) and of the viewer frame IPC
+# messages (point 5): grep (check-contract.sh) guards non-JSON tokens, this
+# guards JSON structure/value-range/enum/schemaVersion/protocolVersion.
 #
 # The Swift tests keep contract/examples/ honest against the real encoders;
 # this script keeps contract/examples/ valid against the schemas. Transitively,
@@ -57,6 +58,10 @@ validate params.schema.json   contract/examples/params.json contract/examples/pa
 validate param-set-request.schema.json contract/examples/param-set-request.json
 validate state.schema.json    contract/examples/state.json contract/examples/state-minimal.json
 validate state-save-request.schema.json contract/examples/state-save-request.json
+# Viewer frame IPC (CONTRACT.md point 5): one schema per JSON Lines message.
+validate viewer-hello.schema.json   contract/examples/viewer-hello.json
+validate viewer-frame.schema.json   contract/examples/viewer-frame.json
+validate viewer-release.schema.json contract/examples/viewer-release.json
 
 if [ "$fail" -ne 0 ]; then
   echo ""

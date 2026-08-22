@@ -99,10 +99,14 @@ public final class WatchSession {
     /// 状態保持を使っていないスケッチで毎回タイムアウトぶんの遅延を払わないため。
     private var stateHandoffDisabled = false
 
-    /// 子スケッチを（再）起動したときに呼ばれる。ビューアが Syphon サーバーの
-    /// 差し替え（同名・別 UUID）に追従するための通知に使う。バックグラウンドキューから
+    /// 子スケッチを（再）起動したときに呼ばれる。ビューアが新しい子（フレーム転送の
+    /// 新しい世代）への切り替えに追従するための通知に使う。バックグラウンドキューから
     /// 呼ばれうるので、受け手はメインスレッドへホップすること。
     public var onChildLaunched: (() -> Void)?
+
+    /// 動作中の子スケッチが生きているか（再ビルド中で子が居なければ false）。
+    /// ビューアが「接続してこないのは本体が古いからか、子が死んだからか」を見分けるために読む。
+    public var isChildRunning: Bool { current?.isRunning == true }
 
     /// `swift build` を始める直前に呼ばれる（`initial` = 初回ビルドかどうか）。
     /// ビューアが「ビルド中…」のローディング表示へ切り替えるための通知。
@@ -417,7 +421,7 @@ public final class WatchSession {
             if let timings = final.timingsSummary {
                 console.write("[watch] \(timings)")
             }
-            onChildLaunched?()  // ビューアに Syphon サーバーの差し替え追従を促す。
+            onChildLaunched?()  // ビューアに新しい子（世代）への切り替えを促す。
         } catch {
             console.writeError("[watch] 起動失敗: \(error)")
         }

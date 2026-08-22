@@ -7,9 +7,9 @@ import MetaphorCLICore
 /// `metaphor watch --viewer`: 常設のライブビューア窓を保ちつつ、ソース変更で
 /// 子スケッチ（ヘッドレス）だけを差し替える。
 ///
-/// 子は `METAPHOR_VIEWER=1` + `METAPHOR_SYPHON_NAME=<name>` で起動し、ビューアは
-/// その名前の Syphon サーバーに接続する。再ビルド時は子だけを止めて起動し直し、
-/// ビューア窓はそのまま（直前フレームを表示し続ける）。
+/// 子は `METAPHOR_VIEWER=1` + `METAPHOR_VIEWER_SOCKET=<path>` で起動し、frame IPC
+/// （CONTRACT.md 契約点 5: Unix socket + 共有メモリ）でビューアへフレームを送る。
+/// 再ビルド時は子だけを止めて起動し直し、ビューア窓はそのまま（直前フレームを表示し続ける）。
 public func runViewerWatch(
     directory: URL,
     swiftArguments: [String],
@@ -34,17 +34,27 @@ public func runViewerWatch(
     // ビューアが死なないようにする。
     installSIGPIPEIgnore()
 
-    // Syphon 名: --syphon-name 指定があればそれ（MadMapper 等へ安定名で送れる）。
-    // 無ければ watch プロセス固有名（同一マシンで複数 watch しても衝突しない）。
-    let syphonName = requestedSyphonName ?? "metaphor-watch-\(ProcessInfo.processInfo.processIdentifier)"
+    // フレーム転送の socket は子を起動する**前**に listen しておく（子は起動直後に connect する）。
+    // 置き場は `.metaphor/` ではなく短い一時ディレクトリ（`sun_path` の上限と、同期フォルダを
+    // 汚さないため。契約点 2）。
+    guard let socketPath = ViewerSocketPath.make() else {
+        throw CLIError("ビューアの socket パスが長すぎます（一時ディレクトリのパスが \(ViewerSocketPath.maximumLength) byte を超えています）", exitCode: 2)
+    }
+    let listener = try FrameIPCListener(path: socketPath)
 
     // Probe（既定 ON、--no-probe で OFF）を有効にすると、子が `.metaphor/probe/` に
     // フレーム+状態を書けるようになり、`metaphor mcp` がこのセッションへアタッチして
     // 観測できる（共有セッション）。人間はビューア窓で見つつ、AI は MCP で観測する。
     var childEnvironment = [
         "METAPHOR_VIEWER": "1",
-        "METAPHOR_SYPHON_NAME": syphonName,
+        "METAPHOR_VIEWER_SOCKET": socketPath,
     ]
+    // Syphon 名は `--syphon-name` で明示されたときだけ渡す（MadMapper 等への外部出力の要求。
+    // 読むのは metaphor-syphon の provider）。既定では渡さない — ビューアへの転送には不要で、
+    // provider 未リンクのスケッチで毎回診断が出るのを避ける。
+    if let requestedSyphonName {
+        childEnvironment["METAPHOR_SYPHON_NAME"] = requestedSyphonName
+    }
     if probeEnabled || metricsEnabled {
         // --metrics はメトリクスの供給元として Probe を必要とする。--no-probe
         // 併用時も注入するが、shareSession（MCP アタッチ可否）は probeEnabled に従う。
@@ -83,54 +93,63 @@ public func runViewerWatch(
     let app = NSApplication.shared
     app.setActivationPolicy(.regular)
     let delegate = ViewerWatchDelegate(
-        syphonName: syphonName,
+        listener: listener,
         title: "metaphor watch — \(directory.lastPathComponent)",
+        directory: directory,
         session: session,
         console: console,
         reporter: reporter
     )
     app.delegate = delegate
 
-    installViewerSignalHandlers(session: session, reporter: reporter, console: console)
+    installViewerSignalHandlers(session: session, listener: listener, reporter: reporter, console: console)
     app.run()
 }
 
 /// ライブビューア + watch supervisor を束ねるアプリデリゲート。
 private final class ViewerWatchDelegate: NSObject, NSApplicationDelegate {
-    private let syphonName: String
+    private let listener: FrameIPCListener
     private let title: String
+    private let directory: URL
     private let session: WatchSession
     private let console: any Console
     private let reporter: MetricsReporter?
     private var viewer: ViewerWindow?
+    private var source: FrameIPCSource?
+    /// 子の起動ごとに +1。`hello` 待ちタイマーが古い起動のものでないことを確かめる。
+    private var launchSerial = 0
 
     init(
-        syphonName: String,
+        listener: FrameIPCListener,
         title: String,
+        directory: URL,
         session: WatchSession,
         console: any Console,
         reporter: MetricsReporter?
     ) {
-        self.syphonName = syphonName
+        self.listener = listener
         self.title = title
+        self.directory = directory
         self.session = session
         self.console = console
         self.reporter = reporter
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // アプリ完全起動後にウィンドウ/MTKView を生成して表示。フレームの供給元
-        // （現在は Syphon 受信）と窓は同じ Metal device を共有させる。
-        guard let device = MTLCreateSystemDefaultDevice(),
-              let viewer = ViewerWindow(
-                source: SyphonFrameSource(device: device, serverName: syphonName),
-                device: device,
-                title: title
-              ) else {
+        // アプリ完全起動後にウィンドウ/MTKView を生成して表示。フレームの供給元（frame IPC）
+        // と窓は同じ Metal device を共有させる（供給元の texture を窓がサンプルするため）。
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            console.writeError("error: Metal device を取得できません（ビューア窓を作成できません）")
+            NSApp.terminate(nil)
+            return
+        }
+        let source = FrameIPCSource(listener: listener, device: device)
+        guard let viewer = ViewerWindow(source: source, device: device, title: title) else {
             console.writeError("error: ビューア窓を作成できませんでした")
             NSApp.terminate(nil)
             return
         }
+        self.source = source
         self.viewer = viewer
 
         // ビューア上のマウス/キー入力を、動作中の子スケッチの stdin へ転送する。
@@ -138,13 +157,20 @@ private final class ViewerWatchDelegate: NSObject, NSApplicationDelegate {
             session?.forwardInput(line)
         }
 
-        // 子の（再）起動時に、ビューアの供給元を新しい世代（Syphon なら同名・別 UUID の
-        // サーバー）へ切り替えさせ、状態を「起動・フレーム待ち」へ進める。コールバックは
-        // バックグラウンドキューから来るのでメインへホップ。
-        session.onChildLaunched = { [weak viewer] in
+        // 子の（再）起動時に、ビューアの供給元を新しい世代（新しい子の接続）へ切り替えさせ、
+        // 状態を「起動・フレーム待ち」へ進める。コールバックはバックグラウンドキューから
+        // 来るのでメインへホップ。`hello` が一定時間来ず子が生きていれば、スケッチの metaphor が
+        // frame IPC を知らない（古い）と判断して案内を出す。
+        session.onChildLaunched = { [weak self] in
             DispatchQueue.main.async {
-                viewer?.notifyChildRelaunched()
-                viewer?.setState(.launching)
+                guard let self else { return }
+                self.launchSerial += 1
+                let serial = self.launchSerial
+                viewer.notifyChildRelaunched()
+                viewer.setState(.launching)
+                DispatchQueue.main.asyncAfter(deadline: .now() + FrameIPCSource.helloTimeout) { [weak self] in
+                    self?.checkHelloTimeout(serial: serial)
+                }
             }
         }
 
@@ -158,7 +184,36 @@ private final class ViewerWatchDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async { viewer?.setState(.buildFailed(message: message)) }
         }
 
+        // 現世代の接続が閉じた = 子が終了した。リロード中（`.building`）の EOF は旧子を
+        // 止めた通常経路なので、起動後〜描画中に閉じたときだけ「終了」と見せる。
+        source.onDisconnected = { [weak self] in
+            guard let self, let viewer = self.viewer else { return }
+            switch viewer.currentState {
+            case .launching, .rendering, .unsupportedLibrary:
+                viewer.setState(.childExited)
+                self.console.writeError("[viewer] スケッチが終了しました — 直前の表示を維持します（保存すると再ビルドします）")
+            default:
+                break
+            }
+        }
+
         viewer.show()
+
+        // 起動前に分かる「本体が古い」: Package.resolved の版が frame IPC 以前なら、
+        // ビルドを待たずにログで案内する（確定判断は hello 待ちタイマーが行う）。
+        // `swift package edit` 中（`Packages/metaphor` がある）は Package.resolved が
+        // 実際にリンクされる版を表さないので見ない。
+        let editedCheckout = directory.appendingPathComponent("Packages/metaphor").path
+        if !FileManager.default.fileExists(atPath: editedCheckout),
+           case .resolved(let version) = EnvironmentVersions.resolve(in: directory).library,
+           let resolved = SemanticVersion(version),
+           let minimum = SemanticVersion(BuildInfo.minimumMetaphorVersionForViewer),
+           resolved < minimum {
+            console.writeError(
+                "[viewer] スケッチの metaphor \(version) はビューアへのフレーム転送に対応していません"
+                + "（\(BuildInfo.minimumMetaphorVersionForViewer) 以上が必要）。Package.swift の版を上げて再ビルドしてください"
+            )
+        }
 
         // 初回ビルド+起動と監視はバックグラウンドで（UI を止めない）。
         let session = self.session
@@ -172,6 +227,20 @@ private final class ViewerWatchDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// 子の起動から `helloTimeout` 経っても `hello` が来ていなければ、子が生きている限り
+    /// 「本体が古い」と判断して案内する（子が既に死んでいれば `onDisconnected` が扱う）。
+    private func checkHelloTimeout(serial: Int) {
+        guard serial == launchSerial, let source, let viewer,
+              !source.hasReceivedHello, session.isChildRunning else { return }
+        if case .launching = viewer.currentState {
+            viewer.setState(.unsupportedLibrary(required: BuildInfo.minimumMetaphorVersionForViewer))
+            console.writeError(
+                "[viewer] 子スケッチは動いていますが \(Int(FrameIPCSource.helloTimeout)) 秒たっても接続してきません。"
+                + "スケッチの metaphor が \(BuildInfo.minimumMetaphorVersionForViewer) 未満だとビューアへフレームを送れません"
+            )
+        }
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
     }
@@ -179,6 +248,7 @@ private final class ViewerWatchDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         reporter?.stop()
         session.stop()
+        listener.stop()
     }
 
     /// ビルド出力からエラー要約の 1 行を取り出す。`error:` を含む最初の行を優先し、
@@ -192,9 +262,10 @@ private final class ViewerWatchDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// SIGINT/SIGTERM で子スケッチを止めてからプロセス終了する。
+/// SIGINT/SIGTERM で子スケッチを止め、socket を片付けてからプロセス終了する。
 private func installViewerSignalHandlers(
     session: WatchSession,
+    listener: FrameIPCListener,
     reporter: MetricsReporter?,
     console: any Console
 ) {
@@ -206,6 +277,7 @@ private func installViewerSignalHandlers(
             reporter?.stop()
             console.write("\n[watch] 停止します…")
             session.stop()
+            listener.stop()
             Foundation.exit(0)
         }
         source.resume()

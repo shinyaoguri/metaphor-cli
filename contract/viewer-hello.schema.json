@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shinyaoguri/metaphor/contract/viewer-hello.schema.json",
+  "title": "Viewer frame IPC: hello (child -> parent)",
+  "description": "Producer (metaphor のスケッチ = 子プロセス) が METAPHOR_VIEWER_SOCKET の Unix socket へ接続した直後と、キャンバスのサイズが変わるたび (resize) に送る 1 行。この行を運ぶ sendmsg には共有メモリ (匿名 POSIX shm) の fd が SCM_RIGHTS で添えられる。Consumer (metaphor-cli のライブビューア = 親プロセス) は fd を mmap し、slots 枚の slot を bytesPerRow / slotBytes のレイアウトで linear texture として読む。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "t",
+    "protocolVersion",
+    "pid",
+    "metaphor",
+    "width",
+    "height",
+    "pixelFormat",
+    "alpha",
+    "colorSpace",
+    "orientation",
+    "bytesPerRow",
+    "slotBytes",
+    "slots",
+    "backing"
+  ],
+  "properties": {
+    "t": {
+      "description": "メッセージ種別。",
+      "const": "hello"
+    },
+    "protocolVersion": {
+      "description": "viewer frame IPC のプロトコル版。キーの追加は据え置き、リネーム / 削除 / 意味変更で bump (CONTRACT.md「schemaVersion bump 規則」と同じ)。",
+      "const": 1
+    },
+    "pid": {
+      "description": "子プロセスの pid。親が「子が生きているのに hello が来ない」を切り分けるときの突き合わせ用。",
+      "type": "integer",
+      "minimum": 1
+    },
+    "metaphor": {
+      "description": "子がリンクしている metaphor の版 (Metaphor.version)。親が「metaphor >= N が必要」を案内するときに使う。",
+      "type": "string"
+    },
+    "width": {
+      "description": "キャンバス (出力テクスチャ) の幅 (px)。",
+      "type": "integer",
+      "minimum": 1
+    },
+    "height": {
+      "description": "キャンバス (出力テクスチャ) の高さ (px)。",
+      "type": "integer",
+      "minimum": 1
+    },
+    "pixelFormat": {
+      "description": "slot のピクセル形式。v1 は bgra8Unorm のみ。HDR (rgba16Float 等) は enum の拡大として additive に足す (consumer は未知の値を落とさず「非対応」と扱う)。",
+      "type": "string",
+      "enum": ["bgra8Unorm"]
+    },
+    "alpha": {
+      "description": "アルファの意味。レンダーターゲットが premultiplied なので (ADR-0012) 無変換で premultiplied。受け手は premultiplied over で合成すること。",
+      "type": "string",
+      "enum": ["premultiplied"]
+    },
+    "colorSpace": {
+      "description": "ピクセル値の色空間。v1 は sRGB。",
+      "type": "string",
+      "enum": ["sRGB", "displayP3"]
+    },
+    "orientation": {
+      "description": "行の並び。topLeft = row 0 が画像の上端 (Metal テクスチャの原点と同じ)。受け手は上下反転せずそのまま描ける。",
+      "type": "string",
+      "enum": ["topLeft"]
+    },
+    "bytesPerRow": {
+      "description": "1 行のバイト数 = alignUp(width * 4, device.minimumLinearTextureAlignment(for: .bgra8Unorm))。MTLBuffer.makeTexture(descriptor:offset:bytesPerRow:) にそのまま渡せる値。",
+      "type": "integer",
+      "minimum": 1
+    },
+    "slotBytes": {
+      "description": "1 slot のバイト数 = alignUp(bytesPerRow * height, pageSize)。slot i は共有メモリの offset i * slotBytes から始まる (page 境界 = makeTexture(offset:) の alignment を満たす)。",
+      "type": "integer",
+      "minimum": 1
+    },
+    "slots": {
+      "description": "共有メモリに並ぶ slot の枚数 (v1 は 3)。共有メモリの全長は slotBytes * slots で、親は fstat(fd) のサイズと突き合わせて検証できる。",
+      "type": "integer",
+      "minimum": 1
+    },
+    "backing": {
+      "description": "共有メモリの実体。posix-shm = shm_open で作り名前を即 unlink した匿名オブジェクト (fd だけで生きる)。将来 IOSurface + XPC 等へ差し替えるときは enum を拡大する。",
+      "type": "string",
+      "enum": ["posix-shm"]
+    }
+  }
+}

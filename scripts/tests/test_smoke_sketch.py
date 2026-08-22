@@ -289,13 +289,16 @@ class ArgumentDefaults(unittest.TestCase):
 
 
 class ChildEnvironment(unittest.TestCase):
-    def test_headless_sets_the_contract_env_vars(self):
-        env = smoke.child_environment(headless=True, syphon_name="metaphor-smoke-run")
+    def test_headless_sets_the_contract_env_var(self):
+        env = smoke.child_environment(headless=True)
         self.assertEqual(env["METAPHOR_VIEWER"], "1")
-        self.assertEqual(env["METAPHOR_SYPHON_NAME"], "metaphor-smoke-run")
+        # ビューア窓への frame IPC は `watch --viewer` だけ。Syphon 名も渡さない
+        # (契約点 1 の廃止。metaphor#792)。
+        self.assertNotIn("METAPHOR_SYPHON_NAME", env)
+        self.assertNotIn("METAPHOR_VIEWER_SOCKET", env)
 
     def test_window_mode_leaves_the_viewer_env_unset(self):
-        env = smoke.child_environment(headless=False, syphon_name="metaphor-smoke-run")
+        env = smoke.child_environment(headless=False)
         self.assertNotIn("METAPHOR_VIEWER", env)
 
 

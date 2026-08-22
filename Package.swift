@@ -1,25 +1,6 @@
 // swift-tools-version: 5.10
 
 import PackageDescription
-import Foundation
-
-// Syphon フレームワークの解決。
-// ローカルに Frameworks/Syphon.xcframework があればそれを使い（開発用）、
-// なければ metaphor 本体と同じ GitHub Release のプリビルドを取得する。
-let localSyphonPath = "Frameworks/Syphon.xcframework"
-let useLocalSyphon = FileManager.default.fileExists(
-    atPath: URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()
-        .appendingPathComponent(localSyphonPath).path
-)
-
-let syphonTarget: Target = useLocalSyphon
-    ? .binaryTarget(name: "Syphon", path: localSyphonPath)
-    : .binaryTarget(
-        name: "Syphon",
-        url: "https://github.com/shinyaoguri/metaphor/releases/download/v0.10.0/Syphon.xcframework.zip",
-        checksum: "fb0a30178dfc31dcc4236750b12cb0debf57c4455c2fe4d806c2e8a22bddc0f2"
-    )
 
 let package = Package(
     name: "metaphor-cli",
@@ -30,18 +11,24 @@ let package = Package(
         .executable(name: "metaphor", targets: ["MetaphorCLI"])
     ],
     targets: [
+        // live viewer の frame IPC のうち Swift から呼べない POSIX API（shm_open / SCM_RIGHTS）
+        // を包む C シム。wire だけが契約（CONTRACT.md 契約点 5）で、metaphor 本体の
+        // `CMetaphorIPC` とは共有しない。
+        .target(
+            name: "CMetaphorFrameIPC"
+        ),
         .target(
             name: "MetaphorCLICore",
+            dependencies: ["CMetaphorFrameIPC"],
             plugins: ["VersionStampPlugin"]
         ),
         .plugin(
             name: "VersionStampPlugin",
             capability: .buildTool()
         ),
-        syphonTarget,
         .target(
             name: "MetaphorViewer",
-            dependencies: ["MetaphorCLICore", "Syphon"]
+            dependencies: ["MetaphorCLICore", "CMetaphorFrameIPC"]
         ),
         .executableTarget(
             name: "MetaphorCLI",
@@ -49,7 +36,7 @@ let package = Package(
         ),
         .testTarget(
             name: "MetaphorCLITests",
-            dependencies: ["MetaphorCLICore"]
+            dependencies: ["MetaphorCLICore", "MetaphorViewer", "CMetaphorFrameIPC"]
         ),
     ]
 )

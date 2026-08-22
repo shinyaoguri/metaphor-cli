@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shinyaoguri/metaphor/contract/viewer-frame.schema.json",
+  "title": "Viewer frame IPC: frame (child -> parent)",
+  "description": "Producer (子) が 1 フレームを slot へ GPU blit し終えたとき (command buffer の完了ハンドラから) 送る 1 行。親はその slot を texture として表示してよい。親は最新の frame だけを表示し (latest-wins)、表示に使った slot は release で返す。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["t", "slot", "seq", "frameCount", "time"],
+  "properties": {
+    "t": {
+      "description": "メッセージ種別。",
+      "const": "frame"
+    },
+    "slot": {
+      "description": "内容が確定した slot の番号 (0 始まり、hello の slots 未満)。",
+      "type": "integer",
+      "minimum": 0
+    },
+    "seq": {
+      "description": "接続内で単調増加する通し番号 (publish を飛ばしたフレームでは進まない)。親が古い frame を捨てる判定に使う。",
+      "type": "integer",
+      "minimum": 0
+    },
+    "frameCount": {
+      "description": "スケッチ側のフレーム番号 (renderer のフレームカウンタ)。--metrics 等の計測用で、表示には使わない。",
+      "type": "integer",
+      "minimum": 0
+    },
+    "time": {
+      "description": "frame を送った時点の子の単調時計 (秒、CACurrentMediaTime 相当)。--metrics のレイテンシ計測用で、表示には使わない。",
+      "type": "number",
+      "minimum": 0
+    }
+  }
+}

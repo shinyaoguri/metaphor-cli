@@ -24,7 +24,7 @@
 - **metaphor**（Swift ライブラリ／スケッチ実行体）: クリエイティブコーディングの
   ランタイム。描画に加えて、**自身を観測・操作可能にするプリミティブ**——Probe
   （`.metaphor/probe` 経由でフレーム＋内部状態を書き出す）、stdin JSON Lines の
-  入力注入、Syphon publish——と、**AI 向けの静的ドキュメント**（`llms.txt` /
+  入力注入、ライブビューアへの frame 転送（viewer frame IPC）——と、**AI 向けの静的ドキュメント**（`llms.txt` /
   `llms-sketch.txt` / `docs/ai/`）を提供する。下表の **producer（定義側）**。
 - **metaphor-cli**（`metaphor` コマンド／ライブビューア）: それらを束ねる開発ツール。
   スキャフォールド・watch・ライブビューアに加え、ライブラリの観測／操作能力を
@@ -46,11 +46,11 @@
 
 | # | 契約 | producer（定義側） | consumer（依存側） |
 |---|---|---|---|
-| 1 | **Syphon.xcframework の Release pin**<br>URL `…/releases/download/<tag>/Syphon.xcframework.zip` + SHA256 checksum | `metaphor` が Release で発行（`release.yml`） | `metaphor-cli/Package.swift` の `binaryTarget` |
-| 2 | **環境変数**<br>`METAPHOR_VIEWER` / `METAPHOR_SYPHON_NAME` / `METAPHOR_FPS` / `METAPHOR_PROBE` / `METAPHOR_SOURCE_STAMP` / `METAPHOR_STATE_DIR` | `metaphor` が読む（`SketchRunner.swift`。**`METAPHOR_VIEWER` は 4 箇所が読む** = `SketchRunner.swift`（プライマリのヘッドレス化）/ `SketchWindow.swift`（セカンダリウィンドウのヘッドレス化）/ `Sketch+Files.swift`（`selectInput()` / `selectOutput()` をダイアログ無しの no-op へ）/ `State/StatePlugin.swift`（契約点 8 の自動有効化）。`METAPHOR_SOURCE_STAMP` は `MetaphorProbePlugin.swift`、`METAPHOR_STATE_DIR` は `MetaphorPaths.swift`） | `metaphor-cli` が設定（`ViewerWatch.swift` / `Watch.swift`） |
+| 1 | **廃止**（2026-08-22・[ADR-0014](https://github.com/shinyaoguri/metaphor/blob/main/docs/adr/0014-viewer-frame-ipc-and-syphon-plugin.md)）。旧 **Syphon.xcframework の Release pin**（`metaphor` の Release asset を `metaphor-cli/Package.swift` が `binaryTarget` で pin）は、ライブビューアが契約点 5 の frame IPC へ移り cli が Syphon.framework を同梱しなくなったので無くなった。番号は他の契約点の参照を動かさないため欠番のまま | — | — |
+| 2 | **環境変数**<br>`METAPHOR_VIEWER` / `METAPHOR_VIEWER_SOCKET` / `METAPHOR_SYPHON_NAME` / `METAPHOR_FPS` / `METAPHOR_PROBE` / `METAPHOR_SOURCE_STAMP` / `METAPHOR_STATE_DIR` | `metaphor` が読む（`SketchRunner.swift`。**`METAPHOR_VIEWER_SOCKET`** は `SketchRunner.swift` の `ViewerOutputProvider` が読み、あれば契約点 5 の producer `ViewerOutputPlugin` を自動登録する。**`METAPHOR_SYPHON_NAME`** は `MetaphorSyphon`（`SyphonOutputProvider.swift`）が読む外部出力の要求で、`SketchRunner.swift` は「出力が要求されたのに出力モジュールが無い」診断のためだけに読む。**`METAPHOR_VIEWER` は 4 箇所が読む** = `SketchRunner.swift`（プライマリのヘッドレス化）/ `SketchWindow.swift`（セカンダリウィンドウのヘッドレス化）/ `Sketch+Files.swift`（`selectInput()` / `selectOutput()` をダイアログ無しの no-op へ）/ `State/StatePlugin.swift`（契約点 8 の自動有効化）。`METAPHOR_SOURCE_STAMP` は `MetaphorProbePlugin.swift`、`METAPHOR_STATE_DIR` は `MetaphorPaths.swift`） | `metaphor-cli` が設定（`ViewerWatch.swift` / `Watch.swift`） |
 | 3 | **stdin 入力イベント（JSON Lines）**<br>キー `t` の値 `mouseDown` `mouseUp` `mouseMove` `mouseDrag` `scroll` `keyDown` `keyUp`、フィールド `x` `y` `button` `code` `chars` `repeat` `dx` `dy`。バージョン番号は持たず、未知の `t` / 未知のフィールドは無視される（下記補足） | `metaphor` が解析（`InputInjectionPlugin.swift`） | `metaphor-cli` が送出（`ViewerWindow.swift`） |
 | 4 | **Probe ファイル契約**<br>`.metaphor/probe/request.json`（リクエスト）/ `.metaphor/probe/current/frame.{png,json}`（単一フレーム出力）/ `.metaphor/probe/current/sequence/`（連続フレーム出力）と `frame.json` / `sequence.json` スキーマ、`ProbeRequest` のフィールド（`id` / `label` / `scale` / `frames` / `every`） | `metaphor`（`MetaphorProbeConfig.swift` / `ProbeFrameMetadata.swift` / `ProbeSequenceManifest.swift` / `ProbeRequest.swift`） | AI エージェント・ツール（`metaphor-cli` の `snapshot` / `capture_sequence`） |
-| 5 | **Syphon サーバー名 / headless 挙動**<br>`METAPHOR_VIEWER=1` で `METAPHOR_SYPHON_NAME` のサーバーへ publish。**publish されるフレームは premultiplied alpha**（下記補足） | `metaphor` headless モード（`SketchRunner.swift` / `MetaphorSyphon`） | `metaphor-cli`（`SyphonFrameSource.swift`） |
+| 5 | **viewer frame IPC**<br>親（cli）が `AF_UNIX` / `SOCK_STREAM` の socket を listen してから子（スケッチ）を `METAPHOR_VIEWER_SOCKET=<パス>` で起動し、子は接続して共有メモリ（匿名 POSIX shm・3 slot）の fd を `hello` に添えて送り、フレームごとに `frame {slot}`、親は読み終えた slot を `release {slot}` で返す。メッセージは JSON Lines で `contract/viewer-{hello,frame,release}.schema.json` が正典（`protocolVersion: 1`）。**slot の内容は `bgra8Unorm` / premultiplied alpha / row 0 = top**（下記補足） | `metaphor`（`Sources/MetaphorCore/Viewer/ViewerOutputPlugin.swift` ほか） | `metaphor-cli`（`Sources/MetaphorViewer/FrameIPCSource.swift` / `Sources/MetaphorCLICore/Viewer/`） |
 | 6 | **AI ドキュメント／wire スキーマのパス・ファイル名**<br>`llms.txt` / `llms-sketch.txt` / `docs/ai/examples-index.{md,json}` / `contract/*.schema.json` | `metaphor` が用意（`llms.txt` / `examples-index` は生成物＝`make llms-txt` / `make examples-index`、`llms-sketch.txt` は**手書き**。`contract/` は両リポ identical な正典。いずれもリポジトリにコミット） | `metaphor-cli` の MCP `api_reference` ツール（`MetaphorDocsLocator.swift` / `SketchToolHandler.swift`） |
 | 7 | **Parameter Store ファイル契約**<br>`.metaphor/params/params.json`（現在値 + 宣言情報の出力）/ `.metaphor/params/set-request.json`（外部からの更新要求）と `params.schema.json` / `param-set-request.schema.json`、環境変数 `METAPHOR_PARAMS`（`0` でオプトアウト） | `metaphor`（`Sources/MetaphorCore/Parameters/` の `ParameterPlugin.swift` / `ParameterFile.swift` / `ParameterStore.swift`） | AI エージェント・ツール（`metaphor-cli` の `params` / `set_param` MCP ツール = `MCP/ParameterStoreTool.swift`） |
 | 8 | **状態保持リロードのファイル契約**<br>`.metaphor/state/state.json`（保存された状態）/ `.metaphor/state/save-request.json`（外部からの保存要求）と `state.schema.json` / `state-save-request.schema.json`、環境変数 `METAPHOR_STATE`（`1` で明示有効・`0` でオプトアウト）/ `METAPHOR_RESTORE_STATE`（復元元のパス） | `metaphor`（`Sources/MetaphorCore/State/` の `StatePlugin.swift` / `SketchStateFile.swift`） | `metaphor-cli` の watch（リビルド時の保存 → 再起動時の注入） |
@@ -188,7 +188,7 @@ enum・`schemaVersion`）の正典は `contract/*.schema.json`**（JSON Schema d
   止まりで強制されない（本 CONTRACT.md 散文と同等）。堅く強制できるのは構造・`customTypes` の
   `enum`・`contentBounds` の正規化範囲・`schemaVersion` の `const`。
 - `scripts/check-contract.sh`（grep）は JSON 構造の検査から降り、**非 JSON 契約点**（環境変数名・
-  `.metaphor/probe` パス・`request.json.tmp` の原子書き込み・`schemaVersion` の値・Syphon pin・
+  `.metaphor/probe` パス・`request.json.tmp` の原子書き込み・`schemaVersion` / `protocolVersion` の値・
   doc パス・stdin 入力イベント）に縮小した。
 
 ### `request.json` のアトミック書き込み（契約点 4 の補足）
@@ -239,24 +239,52 @@ consumer がタイムアウトではなく id 一致で失敗を検知できる�
   `sequence.json` の ready 規約で contact sheet と manifest を返す。トークン自体は
   producer = metaphor が定義）。
 
-### Syphon フレームのアルファ（契約点 5 の補足）
+### viewer frame IPC（契約点 5 の補足）
 
-`metaphor` が publish するフレームは **premultiplied alpha** です。レンダーターゲットが
-premultiplied で（[ADR-0012](https://github.com/shinyaoguri/metaphor/blob/main/docs/adr/0012-alpha-semantics.md)）、`MetaphorSyphon` は
-それを**変換せず無加工で** Syphon サーバーへ渡します（`Sources/MetaphorSyphon/SyphonOutput.swift`）。
+`metaphor watch --viewer` の「子（スケッチ）→ 親（ライブビューア）」のフレーム転送。設計判断と却下案は
+[ADR-0014](https://github.com/shinyaoguri/metaphor/blob/main/docs/adr/0014-viewer-frame-ipc-and-syphon-plugin.md)。
+外部アプリ（MadMapper 等）への出力は Syphon のままで、**この契約は親子専用**（名前 discovery を持たない）。
 
-- **受け手は premultiplied `over` で合成すること** — `result = src.rgb + dst.rgb * (1 - src.a)`。
-  straight alpha の `over`（`src.rgb * src.a + …`）で合成すると α が二重に掛かり、
-  半透明部が暗く沈む。Syphon 側の wire にアルファ種別を申告する経路は無いため、
-  これは**規約でしか伝えられない**（だから契約点に書く）。
-- consumer（`metaphor-cli`）は既にこの前提で動いており、**実装変更は不要**
-  （`SyphonFrameSource.swift` は受け取ったテクスチャを変換せず扱い、`FrameCapture.swift` は
-  `premultipliedFirst` で読む）。MadMapper / VDMX / Resolume など一般の Syphon
-  クライアントも premultiplied を既定とする。
-- **他の出力先とは α の扱いが違う**点に注意（正典は ADR-0012「外部出力での扱い」表）。
-  PNG / Probe / GIF は `premultipliedLast` と宣言して ImageIO に割り戻させるので
-  **ファイルは straight**、動画（h264 / hevc）は**コーデックが α を持てないので黒に
-  合成済みの RGB** が残る。**外へ premultiplied のまま出るのは Syphon だけ**。
+**socket**: `AF_UNIX` / `SOCK_STREAM`。親が `bind` + `listen` してから子を起動し、パスを `METAPHOR_VIEWER_SOCKET`
+で渡す（`sun_path` の上限 = **103 byte 以下**。親は `.metaphor/` ではなく短い一時ディレクトリに置く）。子は起動時
+（`ViewerOutputPlugin.onAttach`）に `connect` し、接続できなければ診断 1 行を出して plugin 無しで続行する
+（Probe は動く）。メッセージは JSON Lines（`\n` 区切り、UTF-8）。**未知の `t` / 未知のフィールドは無視**
+（契約点 3 と同じ規約）。
+
+**メッセージ**（構造の正典は `contract/viewer-*.schema.json`）:
+
+| 方向 | `t` | フィールド | 意味 |
+|---|---|---|---|
+| 子→親 | `hello` | `protocolVersion: 1`, `pid`, `metaphor`（版）, `width`, `height`, `pixelFormat: "bgra8Unorm"`, `alpha: "premultiplied"`, `colorSpace: "sRGB"`, `orientation: "topLeft"`, `bytesPerRow`, `slotBytes`, `slots: 3`, `backing: "posix-shm"` | world の宣言。**この行を送る `sendmsg` に共有メモリの fd を `SCM_RIGHTS` で添える**。resize 時は新しい fd つきで再送し、親は切り替え後に旧 mapping を解放する |
+| 子→親 | `frame` | `slot`, `seq`, `frameCount`, `time` | slot の内容が確定した（**command buffer の完了ハンドラから送る**）。親は最新の `frame` だけを表示する（latest-wins） |
+| 親→子 | `release` | `slot` | 親がその slot の GPU 読みを終えた（親の draw の完了ハンドラから送る）。子は未 release の slot へ書かない |
+| 子→親 | `bye` | — | 正常終了（任意）。親は最後のフレームを保持したまま |
+
+**共有メモリのレイアウト**: `bytesPerRow = alignUp(width × 4, device.minimumLinearTextureAlignment(for: .bgra8Unorm))`、
+`slotBytes = alignUp(bytesPerRow × height, pageSize)`、全長 `slotBytes × slots`。slot i は offset `i × slotBytes`
+（page 境界 = `MTLBuffer.makeTexture(descriptor:offset:bytesPerRow:)` の alignment を満たす）。`ftruncate` は
+作成時 1 回だけ（macOS の制約。resize は新しい shm + `hello` 再送）。親は `fstat(fd)` でサイズを検証できる。
+
+**同期**: 子は release 済み（= 親が握っていない）slot を選んで blit し、3 枚とも親が握っていれば publish を
+飛ばす（描画は止めない）。親が握るのは最大 2（表示中 + 完了待ち）。共有メモリ側に atomics は置かず、同期は
+socket のメッセージだけで行う（in-process の fake producer / consumer で両リポともテストできる）。
+
+**世代 / reload / クラッシュ**: 子 1 プロセス = socket 接続 1 本。親は接続ごとに世代を採番し（accept 順 = 起動順）、
+新しい接続の最初の `frame` が来るまで旧世代の texture を表示し続ける（mapping は子の死後も有効）。子が exit して
+接続が閉じたら親は「終了 / クラッシュ」状態へ（表示は保持）。子が生きているのに `hello` が一定時間来ない →
+「metaphor ≥ N が必要」の案内。
+
+**orientation**: row 0 = top の正立（Metal テクスチャの原点と同じ）。受け手は上下反転せずそのまま描く。
+
+**alpha**: slot の内容は **premultiplied alpha**。レンダーターゲットが premultiplied で
+（[ADR-0012](https://github.com/shinyaoguri/metaphor/blob/main/docs/adr/0012-alpha-semantics.md)）、`ViewerOutputPlugin` は
+それを**変換せず無加工で** blit する。受け手は premultiplied `over`（`result = src.rgb + dst.rgb * (1 - src.a)`）で
+合成すること（straight の `over` では α が二重に掛かり半透明部が暗く沈む）。**他の出力先とは α の扱いが違う**
+（PNG / Probe / GIF は straight、動画は黒に合成済みの RGB。正典は ADR-0012「外部出力での扱い」表）。
+
+**`protocolVersion` の bump 規則**: `schemaVersion` 規則（下記「`schemaVersion` bump 規則」）と同じ —
+キー追加・enum の拡大は据え置き、リネーム / 削除 / 意味変更は bump。v1 の `pixelFormat` は `bgra8Unorm` のみで、
+HDR（`rgba16Float`）は enum の拡大として additive に足す。
 
 ### Parameter Store `.metaphor/params/`（契約点 7）
 
@@ -379,12 +407,12 @@ v1.0 は SemVer 契約の凍結宣言です（昇格条件は `docs/design/v1-re
 
 | 面 | 現行バージョン | キー集合の正典 |
 |---|---|---|
-| 契約環境変数（契約点 2） | — | 契約点 2 の表の名前（+ 契約点 7 の `METAPHOR_PARAMS` / 契約点 8 の `METAPHOR_STATE` / `METAPHOR_RESTORE_STATE`） |
+| 契約環境変数（契約点 2） | — | 契約点 2 の表の名前（`METAPHOR_VIEWER_SOCKET` を含む。+ 契約点 7 の `METAPHOR_PARAMS` / 契約点 8 の `METAPHOR_STATE` / `METAPHOR_RESTORE_STATE`） |
 | stdin 入力イベント（契約点 3） | **バージョン番号なし**（「stdin 入力イベントの互換規約」参照） | 契約点 3 の表の `t` 値とフィールド名 |
 | `request.json`（契約点 4） | `schemaVersion` なし | `contract/request.schema.json` |
 | `frame.json`（契約点 4） | `schemaVersion: 4` | 「`frame.json` スキーマのバージョニング」節 + `contract/frame.schema.json`（トップレベル 14 キー: `schemaVersion` / `id` / `label?` / `sourceStamp?` / `frame` / `time` / `size` / `custom` / `customTypes` / `warnings` / `stats?` / `performance?` / `params?` / `shaders?`） |
 | `sequence.json`（契約点 4） | `schemaVersion: 1` | 「連続フレーム出力 `sequence/`」節 + `contract/sequence.schema.json` |
-| Syphon フレーム（契約点 5） | — | サーバー名の解決 + **premultiplied alpha**（「Syphon フレームのアルファ」節） |
+| viewer frame IPC（契約点 5） | `protocolVersion: 1` | 「viewer frame IPC」節 + `contract/viewer-hello.schema.json` / `viewer-frame.schema.json` / `viewer-release.schema.json` |
 | AI ドキュメントのパス（契約点 6） | — | 契約点 6 の表のファイル名 |
 | `params.json` / `set-request.json`（契約点 7） | `schemaVersion: 1` / なし | 「Parameter Store」節 + `contract/params.schema.json` / `contract/param-set-request.schema.json` |
 | `state.json` / `save-request.json`（契約点 8） | `schemaVersion: 1` / なし | 「状態保持リロード」節 + `contract/state.schema.json` / `contract/state-save-request.schema.json` |
@@ -396,7 +424,7 @@ v1.0 は SemVer 契約の凍結宣言です（昇格条件は `docs/design/v1-re
 ### `schemaVersion` bump 規則
 
 `frame.json` / `sequence.json` / `params.json` / `state.json` に共通の規則です
-（4 つはそれぞれ独立した `schemaVersion` を持ちます）。`request.json` /
+（4 つはそれぞれ独立した `schemaVersion` を持ちます。viewer frame IPC の `protocolVersion` も同じ規則に従います）。`request.json` /
 `set-request.json` / `save-request.json` は `schemaVersion` を持たない consumer 出力なので、
 **「据え置き」の行だけ**が該当します（未知フィールドは producer が無視する）。
 
@@ -415,8 +443,8 @@ v1.0 は SemVer 契約の凍結宣言です（昇格条件は `docs/design/v1-re
 
 ## 変更時のルール（エージェント・人間共通）
 
-「契約点」の表のトークン（環境変数名・JSON のキー/値・Probe のパスやスキーマ・Syphon の
-pin 形式・AI ドキュメントのパス/ファイル名）を変更・追加・削除する場合は、
+「契約点」の表のトークン（環境変数名・JSON のキー/値・Probe のパスやスキーマ・viewer frame IPC の
+メッセージ・AI ドキュメントのパス/ファイル名）を変更・追加・削除する場合は、
 **必ず以下をワンセットで**行うこと:
 
 1. **producer 側**と**consumer 側の両リポジトリ**を同時に更新する。
@@ -433,8 +461,8 @@ pin 形式・AI ドキュメントのパス/ファイル名）を変更・追加
   （リネーム・削除の検出）。
 - **wire スキーマ検証（L2c）**: 両リポジトリの CI が `scripts/check-contract-schema.sh`
   を実行し、`contract/examples/*.json` が `contract/*.schema.json` に適合するか
-  `check-jsonschema` で検証します（JSON の構造・値域・enum・`schemaVersion` の検出。
-  consumer が書く `request.json` を含む）。
+  `check-jsonschema` で検証します（JSON の構造・値域・enum・`schemaVersion` / `protocolVersion` の検出。
+  consumer が書く `request.json` / `release` を含む）。
 - **byte-identity 検証（L2d）**: 両リポジトリの CI が `scripts/check-contract-identity.sh`
   を実行し、「両リポで同一内容」と宣言されたファイル群 — `CONTRACT.md`・
   `contract/` 配下全ファイル（`README.md` / `*.schema.json` / `examples/*.json`）・
@@ -442,36 +470,31 @@ pin 形式・AI ドキュメントのパス/ファイル名）を変更・追加
   `check-contract-identity.sh` 自身）— を他方のリポジトリと byte 単位で比較します
   （同名ブランチ優先・既定ブランチへフォールバック。片側のみの追加・削除も検出）。
   対になる変更は**両リポで同名ブランチ**の PR にすること。
-- **Syphon pin 自動 bump（L2a）**: `metaphor` の安定版 Release 時に
-  `repository_dispatch`（`event_type: syphon-release`）で `metaphor-cli` へ
-  通知し、`metaphor-cli` 側のワークフローが `Package.swift` の URL + checksum を
-  更新する PR を自動作成します。
+- （旧 L2a「Syphon pin 自動 bump」は契約点 1 とともに廃止。番号は欠番のまま）
 
 ## 関連ファイル
 
 ### 両リポジトリ共通
-- `contract/*.schema.json` / `contract/examples/*.json` / `contract/README.md` — Probe wire 形式の正典（同一内容で両リポに置く）
+- `contract/*.schema.json` / `contract/examples/*.json` / `contract/README.md` — Probe / Parameter Store / State / viewer frame IPC の wire 形式の正典（同一内容で両リポに置く）
 - `scripts/check-contract.sh` — 非 JSON 契約点のトークン存在チェック（同一スクリプト）
 - `scripts/check-contract-schema.sh` — examples をスキーマで検証（同一スクリプト）
 - `scripts/check-contract-identity.sh` — 上記すべて＋自分自身の byte-identity を検証（同一スクリプト）
 
 ### metaphor
-- `Sources/MetaphorCore/Sketch/SketchRunner.swift` — 環境変数読み取り・プライマリのヘッドレス化（契約点 2 / 5）
+- `Sources/MetaphorCore/Sketch/SketchRunner.swift` — 環境変数読み取り・プライマリのヘッドレス化・`METAPHOR_VIEWER_SOCKET` による `ViewerOutputPlugin` の自動登録（契約点 2 / 5）
 - `Sources/MetaphorCore/Sketch/SketchWindow.swift` — `METAPHOR_VIEWER` によるセカンダリウィンドウのヘッドレス化（契約点 2）
 - `Sources/MetaphorCore/Sketch/Sketch+Files.swift` — `METAPHOR_VIEWER` のとき `selectInput()` / `selectOutput()` をダイアログ無しの no-op + warning へ落とす（契約点 2）
-- `Sources/MetaphorSyphon/SyphonOutput.swift` / `SyphonPlugin.swift` — Syphon publish（契約点 5。premultiplied alpha を無加工で渡す）
+- `Sources/MetaphorCore/Viewer/ViewerOutputPlugin.swift` / `ViewerFrameIPC.swift` / `ViewerFrameLayout.swift` / `ViewerTransport.swift` — viewer frame IPC の producer（契約点 5。socket・メッセージ・共有メモリのレイアウト）
+- `Sources/MetaphorSyphon/SyphonOutputProvider.swift` — `METAPHOR_SYPHON_NAME` による外部出力（Syphon）の要求（契約点 2）
 - `Sources/MetaphorCore/Input/InputInjectionPlugin.swift` — stdin JSON Lines 解析（契約点 3。未知の `t` / 未知フィールド / 不正な行を無視する互換規約の実装）
 - `Sources/MetaphorCore/Probe/MetaphorProbeConfig.swift` / `ProbeFrameMetadata.swift` / `ProbeRequest.swift` / `ProbeSequenceManifest.swift` — Probe 契約（単一フレーム + 連続フレーム）
 - `Sources/MetaphorCore/Parameters/ParameterPlugin.swift` / `ParameterFile.swift` / `ParameterStore.swift` / `Param.swift` — Parameter Store 契約（契約点 7。`.metaphor/params/` のパス・`METAPHOR_PARAMS`・wire 形式）
 - `Sources/MetaphorCore/State/StatePlugin.swift` / `SketchStateFile.swift` / `Sketch+State.swift` — 状態保持リロード契約（契約点 8。`.metaphor/state/` のパス・`METAPHOR_STATE` / `METAPHOR_RESTORE_STATE`・wire 形式。`StatePlugin` は自動有効化の判定で `METAPHOR_VIEWER` も読む = 契約点 2）
 - `llms.txt` / `docs/ai/examples-index.{md,json}`（生成物）・`llms-sketch.txt`（手書き）— AI ドキュメント（契約点 6）
-- `.github/workflows/release.yml` — Syphon ビルド・Release・cli への dispatch
 
 ### metaphor-cli
-- `Sources/MetaphorViewer/ViewerWatch.swift` — 子プロセス起動・環境変数設定・stdin 転送
+- `Sources/MetaphorViewer/ViewerWatch.swift` — socket の listen・子プロセス起動・環境変数設定・stdin 転送（契約点 2 / 5）
 - `Sources/MetaphorViewer/ViewerWindow.swift` — 入力イベントの JSON Lines 送出
-- `Sources/MetaphorViewer/SyphonFrameSource.swift` — Syphon 受信（契約点 5。premultiplied のまま受け取る）
+- `Sources/MetaphorViewer/FrameIPCSource.swift` / `Sources/MetaphorCLICore/Viewer/` — viewer frame IPC の consumer（契約点 5。`hello` の fd を mmap し、`frame` を表示、`release` を返す）
 - `Sources/MetaphorCLICore/MCP/ProbeSnapshotTool.swift` / `MCP/ProbeSequenceTool.swift` — `snapshot` / `capture_sequence`（契約点 4。`request.json` をアトミックに書き、`frame.json` / `sequence.json` の ready 規約で読む）
 - `Sources/MetaphorCLICore/MCP/MetaphorDocsLocator.swift` / `MCP/SketchToolHandler.swift` — `api_reference`（契約点 6）
-- `Package.swift` — Syphon.xcframework の Release pin
-- `.github/workflows/syphon-bump.yml` — dispatch 受信で pin を更新する PR を作成
