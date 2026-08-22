@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import Foundation
+import Metal
 import MetaphorCLICore
 
 /// `metaphor watch --viewer`: 常設のライブビューア窓を保ちつつ、ソース変更で
@@ -118,8 +119,14 @@ private final class ViewerWatchDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // アプリ完全起動後にウィンドウ/MTKView を生成して表示。
-        guard let viewer = ViewerWindow(serverName: syphonName, title: title) else {
+        // アプリ完全起動後にウィンドウ/MTKView を生成して表示。フレームの供給元
+        // （現在は Syphon 受信）と窓は同じ Metal device を共有させる。
+        guard let device = MTLCreateSystemDefaultDevice(),
+              let viewer = ViewerWindow(
+                source: SyphonFrameSource(device: device, serverName: syphonName),
+                device: device,
+                title: title
+              ) else {
             console.writeError("error: ビューア窓を作成できませんでした")
             NSApp.terminate(nil)
             return
@@ -131,8 +138,8 @@ private final class ViewerWatchDelegate: NSObject, NSApplicationDelegate {
             session?.forwardInput(line)
         }
 
-        // 子の（再）起動時に、ビューアを新しい Syphon サーバー（同名・別 UUID）へ
-        // 張り替えさせ、状態を「起動・フレーム待ち」へ進める。コールバックは
+        // 子の（再）起動時に、ビューアの供給元を新しい世代（Syphon なら同名・別 UUID の
+        // サーバー）へ切り替えさせ、状態を「起動・フレーム待ち」へ進める。コールバックは
         // バックグラウンドキューから来るのでメインへホップ。
         session.onChildLaunched = { [weak viewer] in
             DispatchQueue.main.async {

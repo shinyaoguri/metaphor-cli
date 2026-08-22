@@ -27,7 +27,7 @@ public final class UpdateNotifier {
     /// 通知を出さないコマンド。`mcp` は stdio 上の JSON-RPC サーバなので stdout は
     /// もちろん stderr もクライアントのログを汚す（AI が最も頻繁に起動するコマンド
     /// でもある）。`update` は自ら最新版を扱い、`version` は出力が機械読み取り
-    /// されうる。`__` 始まりの内部コマンドも対象外。
+    /// されうる。`__` 始まり（内部コマンド用に予約した名前）も対象外。
     static let excludedCommands: Set<String> = ["mcp", "update", "version", "--version"]
 
     private let releaseService: any ReleaseServicing
