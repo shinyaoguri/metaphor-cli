@@ -64,10 +64,10 @@ case "$REPO" in
     # METAPHOR_VIEWER_SOCKET selects the viewer frame IPC producer (point 5);
     # METAPHOR_SYPHON_NAME is resolved by the Syphon output provider, but the runner
     # still reads it to diagnose "an output was requested but no module is linked".
+    # METAPHOR_SYPHON_NAME itself is resolved by the metaphor-syphon package (a separate
+    # repository since v0.12.0, ADR-0014); this repo only keeps the diagnostic token.
     check "Sources/MetaphorCore/Sketch/SketchRunner.swift" \
       METAPHOR_VIEWER METAPHOR_VIEWER_SOCKET METAPHOR_SYPHON_NAME METAPHOR_FPS METAPHOR_PROBE
-    check "Sources/MetaphorSyphon/SyphonOutputProvider.swift" \
-      METAPHOR_SYPHON_NAME
     # Viewer frame IPC protocol version VALUE (contract point 5). The message structure
     # is the canon of contract/viewer-*.schema.json (check-contract-schema.sh); a bump
     # here is a breaking change and CONTRACT.md must move too.
