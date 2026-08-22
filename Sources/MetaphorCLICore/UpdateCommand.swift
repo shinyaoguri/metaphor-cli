@@ -253,56 +253,33 @@ public struct UpdateCommand {
             throw CLIError("CLI archive did not contain a metaphor binary")
         }
 
-        // The metaphor binary loads Syphon.framework from @loader_path (its own
-        // directory), so the framework must travel with the binary. Refuse to
-        // write a binary we can't pair with its framework — that would leave an
-        // install that aborts at launch with a dyld error.
-        let unpackedFramework = tempDir.appendingPathComponent("Syphon.framework")
-        guard fileManager.fileExists(atPath: unpackedFramework.path) else {
-            throw CLIError("CLI archive did not contain Syphon.framework; refusing to install a binary that cannot launch. Reinstall via your package manager or scripts/install.sh.")
-        }
-
         // When the install path is a symlink (the libexec layout produced by
-        // scripts/install.sh and Homebrew), dyld computes @loader_path from the
-        // *resolved* binary, so the framework must land beside the real file —
-        // not beside the symlink. Resolve symlinks to find where both belong.
+        // scripts/install.sh and Homebrew), replace the *resolved* binary so the
+        // symlink keeps pointing at the one real file.
         let resolvedBinary = installPath.resolvingSymlinksInPath()
         let installDir = resolvedBinary.deletingLastPathComponent()
-        let frameworkDestination = installDir.appendingPathComponent("Syphon.framework")
 
         try fileManager.createDirectory(at: installDir, withIntermediateDirectories: true)
 
         let binaryBackup = resolvedBinary.appendingPathExtension("old")
-        let frameworkBackup = frameworkDestination.appendingPathExtension("old")
         try? fileManager.removeItem(at: binaryBackup)
-        try? fileManager.removeItem(at: frameworkBackup)
-
         if fileManager.fileExists(atPath: resolvedBinary.path) {
             try fileManager.moveItem(at: resolvedBinary, to: binaryBackup)
-        }
-        if fileManager.fileExists(atPath: frameworkDestination.path) {
-            try fileManager.moveItem(at: frameworkDestination, to: frameworkBackup)
         }
 
         do {
             try fileManager.copyItem(at: unpackedBinary, to: resolvedBinary)
             try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: resolvedBinary.path)
-            try fileManager.copyItem(at: unpackedFramework, to: frameworkDestination)
             // Templates are keyed off the public install path (the bin symlink),
             // not the resolved libexec location, so pass the original installPath.
             try installTemplatesIfPresent(from: tempDir, installPath: installPath)
             try? fileManager.removeItem(at: binaryBackup)
-            try? fileManager.removeItem(at: frameworkBackup)
         } catch {
-            // Roll back the binary and framework together so a failed update never
-            // leaves a new binary next to a stale/missing framework.
+            // Roll the binary back so a failed update never leaves a half-installed
+            // CLI (new binary with the old templates, or no binary at all).
             try? fileManager.removeItem(at: resolvedBinary)
             if fileManager.fileExists(atPath: binaryBackup.path) {
                 try? fileManager.moveItem(at: binaryBackup, to: resolvedBinary)
-            }
-            try? fileManager.removeItem(at: frameworkDestination)
-            if fileManager.fileExists(atPath: frameworkBackup.path) {
-                try? fileManager.moveItem(at: frameworkBackup, to: frameworkDestination)
             }
             throw error
         }

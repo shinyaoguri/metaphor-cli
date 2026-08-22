@@ -1,28 +1,22 @@
 #!/usr/bin/env python3
-"""metaphor の安定版リリースが Homebrew まで届いたかを一点で監査する。
+"""metaphor-cli の最新リリースが Homebrew まで届いたかを一点で監査する。
 
-metaphor(ライブラリ) の安定版が `brew install shinyaoguri/tap/metaphor` の
-ユーザーに届くまでには 4 つの受け渡しがある:
+metaphor-cli のリリースが `brew install shinyaoguri/tap/metaphor` のユーザーに
+届くには、release.yml が homebrew-tap へ Formula 更新の PR を出し、tap 側の
+brew test-bot が green なら bottle 込みで main へ入る、という受け渡しがある。
+ここが止まっても cli 側の Release workflow は「成功したまま」に見える。
 
-    1. metaphor の release.yml が repository_dispatch を撃つ
-       (取りこぼしは syphon-bump.yml の週次 poll が拾う)
-    2. syphon-bump.yml が Package.swift の Syphon pin を上げる PR を出し、
-       auto-merge で main へ入れる
-    3. その PR の `release:patch` ラベルで release-on-merge.yml が発火し、
-       metaphor-cli の新しいリリースが出る
-    4. release.yml が homebrew-tap へ Formula 更新の PR を出し、tap 側の
-       brew test-bot が green なら bottle 込みで main へ入る
+この監査は最終地点(tap の Formula)から逆算して「届いたかどうか」だけを見るので、
+PR 作成・test-bot・pr-pull のどこで止まっても同じ 1 本で捕まる。
 
-どの段も、止まったとき前後の段は「成功したまま」に見える。実際 dispatch は
-CLI_DISPATCH_TOKEN が未設定のまま v0.9.0 まで一度も発火せず、リリースは毎回
-緑だった。この監査は最終地点(tap の Formula)から逆算し、詰まっている段を名指し
-して Issue に残す。個々のワークフローの成否ではなく「届いたかどうか」だけを見る
-ので、まだ知らない壊れ方も同じ 1 本で捕まる。
+かつては metaphor(ライブラリ) の Syphon pin が cli を経由して届くまでの 4 段
+(dispatch → pin bump PR → cli リリース → tap) を見ていたが、ライブビューアが
+frame IPC へ移って Syphon pin の契約 (契約点 1) と自動 bump が無くなったので
+(metaphor#792 / docs/decisions/0014)、最後の 1 段だけが残った。
 
 healthy な状態:
 
     tap の Formula が指す cli タグ == cli の最新リリース
-    かつ そのリリース時点の Package.swift の Syphon pin == metaphor の最新安定版
 
 usage:
     python3 scripts/audit-release-pipeline.py            # 監査して Issue を出す
@@ -39,7 +33,6 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-LIBRARY_REPO = "shinyaoguri/metaphor"
 CLI_REPO = "shinyaoguri/metaphor-cli"
 TAP_REPO = "shinyaoguri/homebrew-tap"
 TAP_FORMULA_PATH = "Formula/metaphor.rb"
@@ -47,8 +40,6 @@ TAP_FORMULA_PATH = "Formula/metaphor.rb"
 # Issue の重複作成を防ぐための目印。監査が自分で作った Issue だけを探して閉じる。
 AUDIT_LABEL = "release-pipeline"
 
-# metaphor-cli/Package.swift が binaryTarget として指す Syphon の Release URL。
-SYPHON_PIN_RE = re.compile(r"releases/download/(v[^/\"]+)/Syphon\.xcframework\.zip")
 # Formula が source tarball として指す metaphor-cli の Release URL。
 FORMULA_TAG_RE = re.compile(r"metaphor-cli/releases/download/(v[^/\"]+)/")
 
@@ -87,24 +78,13 @@ def hours_since(timestamp: str) -> float:
 
 
 class Audit:
-    """4 段の受け渡しの現在地。"""
+    """cli リリース → tap の受け渡しの現在地。"""
 
     def __init__(self) -> None:
-        library = gh_json("api", f"repos/{LIBRARY_REPO}/releases/latest")
-        self.library_tag: str = library["tag_name"]
-        self.library_published: str = library["published_at"]
-
         cli = gh_json("api", f"repos/{CLI_REPO}/releases/latest")
         self.cli_tag: str = cli["tag_name"]
+        self.cli_published: str = cli["published_at"]
 
-        self.pin_on_main = extract(
-            SYPHON_PIN_RE, file_at(CLI_REPO, "Package.swift"), "main の Syphon pin"
-        )
-        self.pin_at_cli_release = extract(
-            SYPHON_PIN_RE,
-            file_at(CLI_REPO, "Package.swift", ref=self.cli_tag),
-            f"{self.cli_tag} 時点の Syphon pin",
-        )
         self.tap_tag = extract(
             FORMULA_TAG_RE,
             file_at(TAP_REPO, TAP_FORMULA_PATH),
@@ -113,28 +93,13 @@ class Audit:
 
     @property
     def lag_hours(self) -> float:
-        return hours_since(self.library_published)
+        return hours_since(self.cli_published)
 
     def stalled_stage(self) -> str | None:
-        """最初に詰まっている段。全段通っていれば None。"""
-        if self.pin_on_main != self.library_tag:
-            return (
-                f"段 1-2: metaphor {self.library_tag} の Syphon pin が metaphor-cli の "
-                f"main に入っていない（main は {self.pin_on_main}）。"
-                " dispatch が撃たれなかったか、syphon-bump.yml の PR が作られていないか"
-                " 未 merge のまま止まっています。"
-            )
-        if self.pin_at_cli_release != self.library_tag:
-            return (
-                f"段 3: pin は main まで来ている（{self.pin_on_main}）が、それを載せた "
-                f"metaphor-cli のリリースが出ていない（最新 {self.cli_tag} は "
-                f"{self.pin_at_cli_release} を pin）。"
-                " release-on-merge.yml が発火しなかった可能性があります"
-                "（pin bump PR の `release:patch` ラベル欠落など）。"
-            )
+        """詰まっている箇所。届いていれば None。"""
         if self.tap_tag != self.cli_tag:
             return (
-                f"段 4: metaphor-cli {self.cli_tag} は出ているが、homebrew-tap の "
+                f"metaphor-cli {self.cli_tag} は出ているが、homebrew-tap の "
                 f"Formula は {self.tap_tag} を指したままです。"
                 " tap への PR 作成・brew test-bot・pr-pull のどれかで止まっています。"
             )
@@ -143,13 +108,10 @@ class Audit:
     def table(self) -> str:
         return "\n".join(
             [
-                "| 段 | 見ているもの | 値 |",
-                "| --- | --- | --- |",
-                f"| — | metaphor の最新安定版 | `{self.library_tag}` |",
-                f"| 1-2 | metaphor-cli main の Syphon pin | `{self.pin_on_main}` |",
-                f"| 3 | metaphor-cli の最新リリース | `{self.cli_tag}` |",
-                f"| 3 | そのリリース時点の Syphon pin | `{self.pin_at_cli_release}` |",
-                f"| 4 | homebrew-tap の Formula が指す版 | `{self.tap_tag}` |",
+                "| 見ているもの | 値 |",
+                "| --- | --- |",
+                f"| metaphor-cli の最新リリース | `{self.cli_tag}` |",
+                f"| homebrew-tap の Formula が指す版 | `{self.tap_tag}` |",
             ]
         )
 
@@ -179,7 +141,7 @@ def open_audit_issues() -> list[dict]:
 
 
 def issue_title(audit: Audit) -> str:
-    return f"release pipeline: metaphor {audit.library_tag} が Homebrew まで届いていない"
+    return f"release pipeline: metaphor-cli {audit.cli_tag} が Homebrew まで届いていない"
 
 
 def report(audit: Audit, stalled: str, max_lag_hours: float) -> None:
@@ -191,26 +153,23 @@ def report(audit: Audit, stalled: str, max_lag_hours: float) -> None:
 
     body = f"""{stalled}
 
-metaphor **{audit.library_tag}** の公開から {audit.lag_hours:.0f} 時間
+metaphor-cli **{audit.cli_tag}** の公開から {audit.lag_hours:.0f} 時間
 （しきい値 {max_lag_hours:.0f} 時間）が経っていますが、`brew install shinyaoguri/tap/metaphor`
 にはまだ届いていません。
 
 {audit.table()}
 
 この Issue は `scripts/audit-release-pipeline.py`（`release-pipeline-audit.yml`）が
-自動起票したもので、4 段すべてが揃った次の監査で自動的にクローズされます。
+自動起票したもので、Formula が最新リリースを指した次の監査で自動的にクローズされます。
 
 ### 手で進めるなら
 
 ```bash
-# 段 1-2: pin bump をやり直す
-gh workflow run syphon-bump.yml --repo {CLI_REPO} -f tag={audit.library_tag}
-
-# 段 3: pin は main にあるがリリースが無いとき
-gh workflow run release.yml --repo {CLI_REPO} -f bump=patch
-
-# 段 4: tap の PR を確認する
+# tap の PR（release.yml が出したもの）の状態を確認する
 gh pr list --repo {TAP_REPO}
+
+# PR が無ければ、cli のリリースを出し直して Formula PR を作り直す
+gh workflow run release.yml --repo {CLI_REPO} -f bump=patch
 ```
 """
     ensure_label()
@@ -231,7 +190,7 @@ def resolve(audit: Audit) -> None:
             "issue", "close", str(issue["number"]),
             "--repo", CLI_REPO,
             "--comment",
-            f"metaphor `{audit.library_tag}` が homebrew-tap まで届いたことを確認したため"
+            f"metaphor-cli `{audit.cli_tag}` が homebrew-tap まで届いたことを確認したため"
             f"自動でクローズします。\n\n{audit.table()}",
         )
         print(f"クローズしました: #{issue['number']}")
@@ -258,7 +217,7 @@ def main() -> int:
 
     stalled = audit.stalled_stage()
     if stalled is None:
-        print(f"healthy: metaphor {audit.library_tag} は homebrew-tap まで届いています。")
+        print(f"healthy: metaphor-cli {audit.cli_tag} は homebrew-tap まで届いています。")
         if not args.dry_run:
             resolve(audit)
         return 0
@@ -267,7 +226,7 @@ def main() -> int:
     print(f"経過: {audit.lag_hours:.1f} 時間 / しきい値 {args.max_lag_hours:.0f} 時間")
 
     if audit.lag_hours <= args.max_lag_hours:
-        # まだ配送中でありうる時間帯。ここで騒ぐと週次トレインの当日に必ず鳴る。
+        # まだ配送中でありうる時間帯（tap の test-bot と bottle の公開に数時間かかる）。
         print("しきい値内のため、まだ配送中とみなして起票しません。")
         return 0
 

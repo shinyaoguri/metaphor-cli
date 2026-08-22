@@ -14,16 +14,16 @@ swift build               # デバッグビルド
 swift test                # テスト実行
 swift run metaphor --help # ローカルビルドを直接実行
 make release              # リリースビルド
-make install              # release ビルドを ~/.local に導入（Syphon.framework 同梱）
+make install              # release ビルドを ~/.local に導入（binary + templates）
 ```
 
-対象は macOS 14.0+ / Swift 5.10+。外部依存は Syphon.xcframework のみ（`Package.swift` で
-GitHub Release からピン留め取得、checksum 検証あり）。
+対象は macOS 14.0+ / Swift 5.10+。`Package.swift` に外部依存は無い（ライブビューアは
+frame IPC で本体と話す。[ADR 0014](docs/decisions/0014-viewer-frame-ipc-drops-syphon-bundle.md)）。
 
 **クローン直後に `make setup` を打ってください。** このリポジトリは `swift build` だけで
 動くので setup を打つ動機が弱く、実際 `core.hooksPath` が未設定のまま
 [クロスリポ契約](#cross-repo-contract)のチェックが CI 任せになっていた前例があります
-（sibling の metaphor は Syphon ビルドを伴うので自然に打たれる）。打ち忘れても
+（sibling の metaphor はサブモジュール初期化を伴うので自然に打たれる）。打ち忘れても
 Claude Code のセッション開始時に `.claude/settings.json` の SessionStart フックが
 同じ設定を入れます（設定済みなら何もしません）。
 
@@ -168,8 +168,8 @@ brew 版に戻ります。`new` だけでなく `run` / `watch` / `doctor` な�
 > `Templates/` を直接読みます（`make install` でコピーした
 > `~/.local/share/metaphor/templates` ではありません）。テンプレートを編集してすぐ試せます。
 
-ビルド成果物は `Syphon.framework` が隣接し `@loader_path` で解決されるため、`make install` の
-ような rpath 付与・再署名なしでライブビューア（`watch --viewer`）も動きます。
+ビルド成果物は単体で動く（同梱物は無い）ので、`make install` を挟まずにライブビューア
+（`watch --viewer`）も動きます。
 
 初回セットアップ（一度だけ）:
 
@@ -276,43 +276,14 @@ Templates/
 
 ## Cross-Repo Contract
 
-`metaphor` ↔ `metaphor-cli` は環境変数名・stdin 入力イベント・Probe ファイルパス・Syphon 名・
-AI ドキュメントの場所などを共有契約として持ちます。詳細と変更ルールは [CONTRACT.md](CONTRACT.md)。
+`metaphor` ↔ `metaphor-cli` は環境変数名・stdin 入力イベント・Probe ファイルパス・ライブビューアの
+frame IPC・AI ドキュメントの場所などを共有契約として持ちます。詳細と変更ルールは [CONTRACT.md](CONTRACT.md)。
 
 - `make contract` でトークン存在チェックと CONTRACT.md のクロスリポ同一性チェックを実行。
 - 同じ 2 つを push 前に自動実行する pre-push フック（`scripts/hooks/pre-push`）を
   `make setup`（単体で入れるなら `make hooks`）が導入します。`core.hooksPath` が
   未設定だとフックは**黙って効かない**ので、`git config core.hooksPath` が
   `scripts/hooks` を返すことで有効化を確認できます。
-
-### Syphon pin bump PR の処理手順
-
-`Package.swift` の Syphon.xcframework pin(契約点 1)は、週次ポーリング(`syphon-bump.yml`、毎週月曜)が
-metaphor の新リリースを検出して bump PR を自動作成します。metaphor のリリース直後に手動で起動することもできます:
-
-```bash
-gh workflow run "Bump Syphon pin" -R shinyaoguri/metaphor-cli
-```
-
-この PR は **GitHub App のインストールトークン**で作られ、コミットは `sign-commits: true` により
-GitHub Actions API 経由で作成されます(= GitHub が署名)。これは main の保護を満たすために両方必要です:
-
-- **CI の発火** — GITHUB_TOKEN 起点のイベントは再帰防止のため `pull_request` workflow を
-  トリガーしない、という GitHub Actions の仕様がある。App トークンで作れば正規に発火する
-- **required_signatures** — ローカル git commit のままでは未署名になりマージがブロックされる。
-  API 経由の commit なら verified になる
-
-App は `release.yml` が homebrew-tap への push に使うものと同一で、secret も
-`REPO_AUTOMATION_APP_CLIENT_ID` / `REPO_AUTOMATION_APP_PRIVATE_KEY` を共用します
-(セットアップ手順は [docs/homebrew.md](docs/homebrew.md))。**この App の install 対象に
-`metaphor-cli` が含まれていないと `Mint app token` step で失敗し、含まれていても権限が
-Contents: write / Pull requests: write に満たなければ PR 作成で失敗します。**
-bump PR が作られない / 再び CI 未発火 + 未署名に戻ったときは、まず install 状態を確認してください。
-
-暫定対処(過去の手順): 未署名・CI 未発火の bot PR が残っている場合、close → reopen で
-自分のアカウント起点の reopened イベントにすると CI は走りますが、**署名は付かないため
-マージはできません**。ローカルで同じ変更を署名付きコミットにして PR を作り直してください。
-検討の経緯は [#78](https://github.com/shinyaoguri/metaphor-cli/issues/78) を参照。
 
 ## Release / Homebrew
 

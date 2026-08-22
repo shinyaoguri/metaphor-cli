@@ -26,7 +26,7 @@ metaphor run
 | `metaphor watch` | ソース変更を監視し、ライブビューア窓を保ったまま再ビルド差し替え |
 | `metaphor mcp` | AI エージェント向け MCP サーバ（[AI と協調する](#ai-と協調する)） |
 | `metaphor update` | CLI 本体と `metaphor` ライブラリの更新を確認・適用 |
-| `metaphor doctor` | Swift / Xcode / テンプレート / Syphon / エディタ環境の診断 |
+| `metaphor doctor` | Swift / Xcode / テンプレート / エディタ環境の診断 |
 | `metaphor examples` | 利用できるテンプレートの一覧表示 |
 | `metaphor version [--json]` | CLI 本体と、いるディレクトリで解決されている `metaphor` ライブラリの版を表示（ネットワークは叩かない） |
 
@@ -121,7 +121,7 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-インストール先を変える場合は `PREFIX=/usr/local` を付けます。direct installer は `metaphor` 本体と Syphon.framework を `~/.local/libexec/metaphor/` に置き、`~/.local/bin/metaphor` をそこへのシンボリックリンクとして張ります（Syphon を `@loader_path` で解決させるため）。アンインストールは次を削除します。
+インストール先を変える場合は `PREFIX=/usr/local` を付けます。direct installer は `metaphor` 本体を `~/.local/libexec/metaphor/` に置き、`~/.local/bin/metaphor` をそこへのシンボリックリンクとして張ります（Homebrew や `metaphor update self` と同じ配置）。アンインストールは次を削除します。
 
 ```bash
 rm -f ~/.local/bin/metaphor
@@ -274,13 +274,12 @@ metaphor     0.9.0 (Package.resolved)
 [ok] Xcode: Xcode 26.6
 [ok] Package.swift found
 [ok] 7 project templates available (/opt/homebrew/Cellar/metaphor/0.4.0/share/metaphor/templates)
-[ok] Syphon.framework loaded: /opt/homebrew/Cellar/metaphor/0.4.0/libexec/Syphon.framework/Versions/A/Syphon
 [ok] VSCode Swift extension: swiftlang.swift-vscode 2.17.20260702
 [ok] .sourcekit-lsp/config.json: backgroundIndexing disabled
 [warn] Sketch not built yet (.build/debug not found) — editor completion needs one `swift build`
 ```
 
-診断項目は、実行中の CLI と解決済みライブラリの版、Swift / Xcode のバージョン、カレントディレクトリの `Package.swift` の有無（スケッチ外で実行すると `[warn]`）、プロジェクトテンプレートの配置、Syphon.framework のロード元、そしてエディタ（VSCode）側の前提です。`[warn]` の項目に対応する機能（テンプレート生成、ライブビューア / Syphon 出力など）が使えない状態を示します。
+診断項目は、実行中の CLI と解決済みライブラリの版、Swift / Xcode のバージョン、カレントディレクトリの `Package.swift` の有無（スケッチ外で実行すると `[warn]`）、プロジェクトテンプレートの配置、そしてエディタ（VSCode）側の前提です。`[warn]` の項目に対応する機能（テンプレート生成など）が使えない状態を示します。
 
 エディタ側の 3 項目は、`.vscode/` を同梱していても補完・hover が**無言で出ない**ときに、原因を切り分けるためのものです。CLI の動作自体は妨げないので `[warn]` 止まりです。
 
@@ -446,9 +445,10 @@ AI エージェントで作業する場合の起点は [AGENTS.md](AGENTS.md)、
 
 ## Troubleshooting
 
-まず [`metaphor doctor`](#metaphor-doctor) を実行すると、Swift / Xcode / テンプレート / Syphon.framework / エディタ（VSCode）側の前提の状態がまとめて確認できます。
+まず [`metaphor doctor`](#metaphor-doctor) を実行すると、Swift / Xcode / テンプレート / エディタ（VSCode）側の前提の状態がまとめて確認できます。
 
 - **`metaphor watch` のライブビューア窓が黒いまま** — 子スケッチの初回ビルド中か、ビルド失敗の可能性。ターミナルの `[watch]` ログを確認してください。ビルド失敗時は直前のスケッチを維持し、`[watch] ビルド失敗 …` を表示します。
+- **窓に「metaphor 0.11.0 以上が必要です」と出る** — スケッチがリンクしている `metaphor` がビューアへのフレーム転送（frame IPC）を知らない版です。`Package.swift` の `metaphor` の版を上げて再ビルドしてください（`metaphor update` で確認できます）。
 - **`metaphor watch` が遅い／毎回フルビルドになる** — バイナリ解決に失敗すると `swift run` にフォールバックします。`[watch] バイナリ解決に失敗 …` が出る場合は、パッケージに executable プロダクトがあるか、`swift build --show-bin-path` が通るか確認。
 - **AI（MCP）から観測できない** — `metaphor watch`（共有セッション）が起動しているか、**先に `watch` → 後から AI クライアント**の順序で起動したか、`metaphor watch --no-probe` で無効化していないかを確認。順序が逆だと MCP は別インスタンスを観測します（直し方は [共有セッション](#人間と-ai-で同じスケッチを共有する共有セッション) を参照）。`metaphor mcp` は同じディレクトリで実行します。
 - **AI クライアントが MCP サーバに接続できない** — `.mcp.json` / `claude mcp add` の登録は **PATH 上の `metaphor`** を起動します。`which metaphor` で CLI が見つかるか確認してください（brew 未導入の環境や direnv での開発版⇄brew 版切替中は、見つからず黙って失敗することがあります）。

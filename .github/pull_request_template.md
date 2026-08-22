@@ -21,5 +21,5 @@
 
 - [ ] `swift build` / `swift test` が green
 - [ ] テストを追加した（新しいテストは対象の振る舞いを一時的に壊して赤くなるのを確認した）
-- [ ] クロスリポ契約（`CONTRACT.md` の環境変数・stdin JSON Lines・Probe ファイル・Syphon pin）に触れる場合、`metaphor` 側の対応 PR / Issue を立て `./scripts/check-contract.sh` が green
+- [ ] クロスリポ契約（`CONTRACT.md` の環境変数・stdin JSON Lines・Probe ファイル・viewer frame IPC）に触れる場合、`metaphor` 側の対応 PR / Issue を立て `./scripts/check-contract.sh` が green
 - [ ] ドキュメント（README / DEVELOPMENT / CONTRACT）を追随させた
