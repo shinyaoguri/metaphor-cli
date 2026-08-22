@@ -51,6 +51,11 @@ public final class FrameIPCSource: FrameSource {
     private var frameArrivedAt: [Int: TimeInterval] = [:]
     /// `frame` 受信 → その slot をサンプルした最初の command buffer の完了までの遅延。
     public private(set) var latency = LatencyStats()
+    /// 受け取った `frame` の数と、実際に表示へ回した数（差 = latest-wins で追い越した数）。
+    public private(set) var receivedFrames = 0
+    public private(set) var displayedFrames = 0
+    /// `METAPHOR_VIEWER_DEBUG=1` のとき、`frame` 300 枚ごとに受信・表示・遅延の統計を stderr へ出す。
+    private let debugStats = ProcessInfo.processInfo.environment["METAPHOR_VIEWER_DEBUG"] == "1"
 
     public struct LatencyStats: Equatable {
         public var count = 0
@@ -91,6 +96,7 @@ public final class FrameIPCSource: FrameSource {
     public func currentTexture() -> MTLTexture? {
         guard let world, let taken = tracker.takeForDisplay() else { return nil }
         release(taken.releases)
+        displayedFrames += 1
         return world.textures[taken.slot]
     }
 
@@ -156,6 +162,14 @@ public final class FrameIPCSource: FrameSource {
                   frame.slot >= 0, frame.slot < world.textures.count else { return }
             frameArrivedAt[frame.slot] = CACurrentMediaTime()
             release(tracker.frameArrived(slot: frame.slot))
+            receivedFrames += 1
+            if debugStats, receivedFrames % 300 == 0 {
+                onDiagnostic(String(
+                    format: "[viewer-debug] received=%d displayed=%d overtaken=%d latency mean=%.2fms max=%.2fms (n=%d)",
+                    receivedFrames, displayedFrames, receivedFrames - displayedFrames,
+                    latency.meanSeconds * 1000, latency.maxSeconds * 1000, latency.count
+                ))
+            }
             onFrame?()
 
         case .bye:

@@ -191,6 +191,7 @@ private final class ViewerWatchDelegate: NSObject, NSApplicationDelegate {
             switch viewer.currentState {
             case .launching, .rendering, .unsupportedLibrary:
                 viewer.setState(.childExited)
+                self.console.writeError("[viewer] スケッチが終了しました — 直前の表示を維持します（保存すると再ビルドします）")
             default:
                 break
             }
@@ -199,8 +200,12 @@ private final class ViewerWatchDelegate: NSObject, NSApplicationDelegate {
         viewer.show()
 
         // 起動前に分かる「本体が古い」: Package.resolved の版が frame IPC 以前なら、
-        // ビルドを待たずに案内する（ビルド中のオーバーレイより優先して見せる）。
-        if case .resolved(let version) = EnvironmentVersions.resolve(in: directory).library,
+        // ビルドを待たずにログで案内する（確定判断は hello 待ちタイマーが行う）。
+        // `swift package edit` 中（`Packages/metaphor` がある）は Package.resolved が
+        // 実際にリンクされる版を表さないので見ない。
+        let editedCheckout = directory.appendingPathComponent("Packages/metaphor").path
+        if !FileManager.default.fileExists(atPath: editedCheckout),
+           case .resolved(let version) = EnvironmentVersions.resolve(in: directory).library,
            let resolved = SemanticVersion(version),
            let minimum = SemanticVersion(BuildInfo.minimumMetaphorVersionForViewer),
            resolved < minimum {

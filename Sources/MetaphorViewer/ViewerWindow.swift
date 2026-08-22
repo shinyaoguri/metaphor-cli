@@ -204,8 +204,8 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
 
         case .unsupportedLibrary(let required):
             // 子は動いているのに hello が来ない = スケッチの metaphor がビューアと話せない。
-            let detail = "スケッチの metaphor が古く、ビューアにフレームを送れません。"
-                + "Package.swift の metaphor を \(required) 以上にして再ビルドしてください"
+            // 1 行に収める（overlay の detail は折り返さない）。
+            let detail = "Package.swift の metaphor を \(required) 以上にして再ビルドしてください"
             if hasRenderedFrame {
                 fullOverlay.isHidden = true
                 badge.isHidden = false
@@ -339,7 +339,8 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
     public func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
     private var statusFrames = 0
-    private var loggedFirstFrame = false
+    /// 直近にログへ出したフレームサイズ（初回と resize のときだけログを出すため）。
+    private var loggedFrameSize: (width: Int, height: Int)?
 
     public func draw(in view: MTKView) {
         // 接続・子プロセス差し替え（リロード）検知。供給元（``FrameSource``）が
@@ -369,12 +370,14 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
             }
         }
 
-        // 状態をターミナルに表示（最初のフレーム受信・待機を可視化）。
+        // 状態をターミナルに表示（最初のフレーム受信・resize・待機を可視化）。
         statusFrames += 1
-        if lastFrame != nil && !loggedFirstFrame {
-            loggedFirstFrame = true
-            let s = lastFrame.map { "\($0.width)x\($0.height) fmt=\($0.pixelFormat.rawValue)" } ?? "?"
-            FileHandle.standardError.write("[viewer] フレーム受信中 \(s)\n".data(using: .utf8)!)
+        if let frame = lastFrame,
+           loggedFrameSize.map({ $0.width != frame.width || $0.height != frame.height }) ?? true {
+            loggedFrameSize = (frame.width, frame.height)
+            FileHandle.standardError.write(
+                "[viewer] フレーム受信中 \(frame.width)x\(frame.height) fmt=\(frame.pixelFormat.rawValue)\n".data(using: .utf8)!
+            )
         }
         if statusFrames % 180 == 0 && lastFrame == nil {
             FileHandle.standardError.write("[viewer] スケッチの出力を待機中…\n".data(using: .utf8)!)
