@@ -189,7 +189,7 @@ final class UpdateNotifierTests: XCTestCase {
         XCTAssertFalse(UpdateNotifier.shouldRun(forCommand: "update"))
         XCTAssertFalse(UpdateNotifier.shouldRun(forCommand: "version"))
         XCTAssertFalse(UpdateNotifier.shouldRun(forCommand: "--version"))
-        XCTAssertFalse(UpdateNotifier.shouldRun(forCommand: "__view"))
+        XCTAssertFalse(UpdateNotifier.shouldRun(forCommand: "__internal"), "names starting with __ are reserved")
 
         XCTAssertTrue(UpdateNotifier.shouldRun(forCommand: "new"))
         XCTAssertTrue(UpdateNotifier.shouldRun(forCommand: "watch"))

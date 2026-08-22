@@ -4,26 +4,26 @@ import Metal
 import MetaphorCLICore
 import QuartzCore
 
-/// 名前付き Syphon サーバーのフレームをウィンドウに表示するライブビューア。
+/// 子スケッチのフレームをウィンドウに表示するライブビューア。
 ///
-/// `MTKView` に Syphon の最新テクスチャをアスペクト比保持（レターボックス）で
-/// 表示する。フレームは ``SyphonFrameSource`` から取得し、metaphor が flipped:true で
-/// publish するため、サンプリング時に上下反転する。
+/// `MTKView` に最新テクスチャをアスペクト比保持（レターボックス）で表示する。
+/// フレームは ``FrameSource``（転送路の抽象。現在は Syphon 受信の ``SyphonFrameSource``）
+/// から取得する。metaphor は flipped:true で publish するため、サンプリング時に上下反転する。
 public final class ViewerWindow: NSObject, MTKViewDelegate {
     private let device: MTLDevice
     private let commandQueue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
-    private let source: SyphonFrameSource
+    private let source: any FrameSource
 
     private let window: NSWindow
     private let view: MTKView
 
-    /// Syphon フレームをアスペクト比保持で描くオフスクリーンテクスチャ（ドローアブル相当サイズ）。
+    /// フレームをアスペクト比保持で描くオフスクリーンテクスチャ（ドローアブル相当サイズ）。
     /// これをドローアブルへ blit してから present する。
     private var offscreen: MTLTexture?
 
-    /// 最後に受信した Syphon フレーム。フレームが来ないフレーム（newFrameImage が nil）
-    /// でも直前の画を出し続けるために保持する。Syphon テクスチャは bgra8Unorm なので
+    /// 最後に受信したフレーム。新しいフレームが来ない描画サイクル（`currentTexture()` が nil）
+    /// でも直前の画を出し続けるために保持する。テクスチャは bgra8Unorm なので
     /// そのままサンプルすれば色は正しい。
     private var lastFrame: MTLTexture?
 
@@ -41,8 +41,9 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
     /// 一度でもフレームを描いたか。全面オーバーレイか右下バッジかの出し分けに使う。
     private var hasRenderedFrame = false
 
-    /// Syphon サーバーへの張り替え待ちが長引いているか（``SyphonFrameSource`` の判断）。
-    /// 「待てば来る」のか「復帰を試みている」のかを利用者が区別できるよう表示に反映する。
+    /// 供給元への接続待ちが長引き、復帰を試みている段階か（``FrameSource/status`` が
+    /// `.helloTimedOut` のとき）。「待てば来る」のか「復帰を試みている」のかを利用者が
+    /// 区別できるよう表示に反映する。
     private var isReconnecting = false
 
     /// 全面ローディング表示（フレーム未取得時）。
@@ -51,17 +52,24 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
     private var badge: StatusBadgeView?
 
     /// - Parameters:
-    ///   - serverName: 接続する Syphon サーバー名（子プロセスの METAPHOR_SYPHON_NAME）。
+    ///   - source: フレームの供給元。テクスチャは `device` で作られていること
+    ///     （別 device のテクスチャはサンプルできない）。
+    ///   - device: 描画に使う Metal device（呼び出し側が供給元と共有させる）。
     ///   - title: ウィンドウタイトル。
     ///   - width/height: 初期ウィンドウサイズ。
-    public init?(serverName: String, title: String, width: Int = 960, height: Int = 540) {
-        guard let device = MTLCreateSystemDefaultDevice(),
-              let queue = device.makeCommandQueue() else {
+    public init?(
+        source: any FrameSource,
+        device: MTLDevice,
+        title: String,
+        width: Int = 960,
+        height: Int = 540
+    ) {
+        guard let queue = device.makeCommandQueue() else {
             return nil
         }
         self.device = device
         self.commandQueue = queue
-        self.source = SyphonFrameSource(device: device, serverName: serverName)
+        self.source = source
 
         guard let pipeline = ViewerWindow.makeBlitPipeline(device: device) else {
             return nil
@@ -134,10 +142,10 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
         installEventMonitor()
     }
 
-    /// 子スケッチが（再）起動したことを通知する。次に現れる別 UUID の同名サーバー
-    /// （＝再起動後の子）へ張り替える。メインスレッドから呼ぶこと。
+    /// 子スケッチが（再）起動したことを通知する。供給元を次の世代（＝再起動後の子）の
+    /// 出力へ切り替えさせる。メインスレッドから呼ぶこと。
     public func notifyChildRelaunched() {
-        source.expectNewServer()
+        source.expectNewGeneration()
     }
 
     /// ビューアの段階を更新し、ローディング/状態表示へ反映する。**メインスレッドから
@@ -174,13 +182,13 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
 
         case .launching:
             // 待機が長引いているときは、ただ待っているのではなく復帰を試みていることを見せる
-            // （Syphon の announce 取りこぼしからの自力復帰中。Issue #139）。
+            // （供給元の `.helloTimedOut`。Syphon では announce 取りこぼしからの自力復帰中。Issue #139）。
             if hasRenderedFrame {
                 fullOverlay.isHidden = true
                 badge.isHidden = false
                 badge.configure(
                     spinning: true,
-                    text: isReconnecting ? "Syphon サーバへ再接続を試行中…" : "新しいフレームを待機中…"
+                    text: isReconnecting ? "再接続を試行中…" : "新しいフレームを待機中…"
                 )
             } else {
                 badge.isHidden = true
@@ -188,7 +196,7 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
                 fullOverlay.configure(
                     mode: .loading,
                     title: "スケッチを起動中…",
-                    detail: isReconnecting ? "Syphon サーバへ再接続を試行中です" : "Syphon 出力を待機しています"
+                    detail: isReconnecting ? "フレーム供給元へ再接続を試行中です" : "スケッチの出力を待機しています"
                 )
             }
 
@@ -304,16 +312,17 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
     private var loggedFirstFrame = false
 
     public func draw(in view: MTKView) {
-        // 接続・子プロセス差し替え（リロード）検知。``SyphonFrameSource`` が
-        // 同名・別 UUID の新サーバーへの張り替えと、そこからの自力復帰まで面倒を見る。
+        // 接続・子プロセス差し替え（リロード）検知。供給元（``FrameSource``）が
+        // 再起動後の子への切り替えと、そこからの自力復帰まで面倒を見る。
         source.poll()
 
         // 復帰試行に入った/抜けたら表示とログを更新する（毎フレーム再構成はしない）。
-        if source.isStalled != isReconnecting {
-            isReconnecting = source.isStalled
+        let reconnecting = source.status == .helloTimedOut
+        if reconnecting != isReconnecting {
+            isReconnecting = reconnecting
             let message = isReconnecting
-                ? "[viewer] 新しい Syphon サーバが見つかりません。再アナウンスを要求して復帰を試みます…\n"
-                : "[viewer] Syphon サーバへ接続し直しました\n"
+                ? "[viewer] 新しいフレーム供給元が見つかりません。再接続を試みます…\n"
+                : "[viewer] フレーム供給元へ接続し直しました\n"
             FileHandle.standardError.write(message.data(using: .utf8)!)
             refreshOverlay()
         }
@@ -338,7 +347,7 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
             FileHandle.standardError.write("[viewer] フレーム受信中 \(s)\n".data(using: .utf8)!)
         }
         if statusFrames % 180 == 0 && lastFrame == nil {
-            FileHandle.standardError.write("[viewer] スケッチの Syphon 出力を待機中…\n".data(using: .utf8)!)
+            FileHandle.standardError.write("[viewer] スケッチの出力を待機中…\n".data(using: .utf8)!)
         }
 
         guard let drawable = view.currentDrawable,
@@ -360,7 +369,7 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
 
         guard let offscreen else { return }
 
-        // 1) Syphon フレームをオフスクリーンへアスペクト比保持で描画（サンプリングは
+        // 1) フレームをオフスクリーンへアスペクト比保持で描画（サンプリングは
         //    オフスクリーン宛て。ドローアブルへ直接サンプル描画すると画面が黒くなるため）。
         let rpd = MTLRenderPassDescriptor()
         rpd.colorAttachments[0].texture = offscreen
@@ -405,7 +414,8 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
     // MARK: - Helpers
 
     /// フルスクリーン三角形で held テクスチャをサンプルする blit パイプライン。
-    /// Syphon フレームは上下反転しているため UV の V を反転する。
+    /// 現在の供給元（Syphon）のフレームは上下反転しているため、その前提で UV を組む
+    /// （frame IPC への移行時に正立入力へ変える。metaphor#792）。
     private static func makeBlitPipeline(device: MTLDevice) -> MTLRenderPipelineState? {
         let source = """
         #include <metal_stdlib>

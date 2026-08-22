@@ -4,7 +4,8 @@ import MetaphorCLICore
 import QuartzCore
 import Syphon
 
-/// 名前付き Syphon サーバーに接続し、最新フレームの `MTLTexture` を提供する。
+/// 名前付き Syphon サーバーに接続し、最新フレームの `MTLTexture` を提供する
+/// ``FrameSource`` 実装。
 ///
 /// metaphor のヘッドレスモード（`METAPHOR_VIEWER=1`）が `METAPHOR_SYPHON_NAME`
 /// で publish するサーバーに、ビューアが接続するために使う。サーバーは子プロセスの
@@ -16,7 +17,7 @@ import Syphon
 /// Syphon サーバーになる。このとき旧サーバーに張り付いたクライアントは（`isValid` が
 /// すぐに false にならない場合があり）新フレームを受け取れず、ビューアが古い絵のまま
 /// 固まる。これを避けるため、親（`WatchSession`）が子を起動し直したら
-/// ``expectNewServer()`` を呼び、次に現れる「直前とは別 UUID の同名サーバー」へ
+/// ``expectNewGeneration()`` を呼び、次に現れる「直前とは別 UUID の同名サーバー」へ
 /// 確実に張り替える。`noLoop()` 中（publish が止まる）でも、フレーム途絶ではなく
 /// **UUID の変化**で判定するため誤発火しない。
 ///
@@ -31,7 +32,7 @@ import Syphon
 ///   `ServerAnnounceRequest` をブロードキャストし、生きているサーバーに再アナウンスさせる
 /// - **張り替え先の生存確認**: 掴んだ先からフレームが来なければ policy が降格し、次の候補へ移る
 ///   （そのための「最後にフレームを受け取った時刻」をこの型が記録する）
-public final class SyphonFrameSource {
+public final class SyphonFrameSource: FrameSource {
     private let device: MTLDevice
     private let serverName: String
     private var client: SyphonMetalClient?
@@ -50,14 +51,43 @@ public final class SyphonFrameSource {
     private var generation: UInt64 = 0
     private let frameLock = NSLock()
 
-    /// 待機が長引いているか（利用者へ「再接続を試行中」と見せるための表示用）。
-    public private(set) var isStalled = false
+    /// 待機が長引いているか（``status`` の `.helloTimedOut` の材料。policy の判断）。
+    private var isStalled = false
+
+    /// 現在の接続で最後に受け取ったフレームのピクセルサイズ（`.connected` の材料）。
+    /// 張り替えのたびに nil へ戻す。メインスレッドからしか触らない。
+    private var lastFrameSize: (width: Int, height: Int)?
+
+    /// 有効な接続が無い状態が始まった時刻（`.waitingForConnection(since:)` の材料）。
+    /// 生成直後から「待ち」なので初期値は生成時刻。
+    private var waitingSince: TimeInterval? = CACurrentMediaTime()
+
+    /// ``stop()`` 済みか。
+    private var isStopped = false
 
     /// 新フレーム到着時に呼ばれる（Syphon の別スレッドから呼ばれうる）。
     public var onFrame: (() -> Void)?
 
-    /// サーバーへ接続済みかつ有効かどうか。
-    public var isConnected: Bool { client?.isValid == true }
+    /// 接続状態を ``FrameSourceStatus`` へ写す。frame IPC（metaphor#792）の語彙に
+    /// Syphon の状況を対応付けている:
+    ///
+    /// - `.helloTimedOut`: 新サーバーが現れないまま待機が長引き、再アナウンス要求で
+    ///   復帰を試みている（Syphon では announce が hello に相当する）
+    /// - `.connected`: クライアントが有効で、この接続でフレームを受け取れている
+    /// - `.waitingForConnection`: 上記以外の待ち（未接続、張り替え直後でフレーム未着）
+    /// - `.disconnected`: ``stop()`` 後
+    public var status: FrameSourceStatus {
+        if isStopped {
+            return .disconnected
+        }
+        if isStalled {
+            return .helloTimedOut
+        }
+        if client?.isValid == true, let size = lastFrameSize {
+            return .connected(width: size.width, height: size.height)
+        }
+        return .waitingForConnection(since: waitingSince ?? CACurrentMediaTime())
+    }
 
     public init(
         device: MTLDevice,
@@ -71,13 +101,19 @@ public final class SyphonFrameSource {
 
     /// 子スケッチが（再）起動したことを親から通知する。次に現れる「直前とは別 UUID の
     /// 同名サーバー」へ ``poll()`` で張り替える。新サーバーが現れるまでは現在の表示を保つ。
-    public func expectNewServer() {
+    public func expectNewGeneration() {
         policy.expectNewServer()
     }
 
     /// 毎フレーム呼ぶ。接続・差し替え検知・復帰動作をまとめて行う。
     public func poll() {
         let now = CACurrentMediaTime()
+        // 「有効な接続が無い」期間の始まりを覚えておく（status の since 用）。
+        if client?.isValid == true {
+            waitingSince = nil
+        } else if waitingSince == nil {
+            waitingSince = now
+        }
         let servers = sameNameServers()
         // UUID の無い記述は同一性を追えないので候補から外す（Syphon は通常必ず付ける）。
         var byUUID: [String: [String: Any]] = [:]
@@ -109,8 +145,9 @@ public final class SyphonFrameSource {
         let texture = client?.newFrameImage()
         // 生存確認の材料。コールバックが来ない実装/経路でも、絵が取れているなら生きている。
         // （張り替えと同じメインスレッドから呼ばれるので世代の取り違えは起きない）
-        if texture != nil {
+        if let texture {
             noteFrame()
+            lastFrameSize = (texture.width, texture.height)
         }
         return texture
     }
@@ -119,6 +156,8 @@ public final class SyphonFrameSource {
         client?.stop()
         client = nil
         connectedUUID = nil
+        lastFrameSize = nil
+        isStopped = true
     }
 
     // MARK: - Private
@@ -127,6 +166,7 @@ public final class SyphonFrameSource {
     private func bind(to description: [String: Any]) {
         client?.stop()
         connectedUUID = uuid(of: description)
+        lastFrameSize = nil  // 新しい接続のサイズは最初のフレームで分かる。
         frameLock.lock()
         generation &+= 1
         let generation = self.generation
