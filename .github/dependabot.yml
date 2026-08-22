@@ -2,9 +2,9 @@ version: 2
 
 updates:
   # GitHub Actions の陳腐化防止。
-  # SwiftPM (package-ecosystem: swift) は登録していない — Package.swift の外部依存は
-  # Syphon.xcframework の binaryTarget（URL + checksum）のみで Package.resolved を持たず、
-  # この pin は metaphor 側の Release を受けた syphon-bump.yml が自動更新するため。
+  # SwiftPM (package-ecosystem: swift) は登録していない — Package.swift に外部依存が
+  # 無く（ライブビューアは frame IPC で本体と話す。metaphor#792）、Package.resolved も
+  # 持たないため。
   - package-ecosystem: github-actions
     directory: /
     schedule:

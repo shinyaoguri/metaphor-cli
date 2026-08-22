@@ -1,6 +1,6 @@
 # 0003: Syphon pin の追随は dispatch + 週次ポーリングの二段構えで自動化する
 
-- **状態**: 採用 (2026-06-21、2026-08-10 に bot PR の作り方を改訂)
+- **状態**: 廃止 (2026-08-23 → [0014](0014-viewer-frame-ipc-drops-syphon-bundle.md))。採用は 2026-06-21、2026-08-10 に bot PR の作り方を改訂。ライブビューアが frame IPC へ移り、追随すべき Syphon pin そのものが無くなった (metaphor#792)。以下は廃止時点の記録
 
 - **文脈**: `metaphor-cli` は `metaphor` を Swift ライブラリとして依存していないが、**Syphon.xcframework の binaryTarget pin** (`Package.swift` の URL + checksum) だけは共有している。この pin を発行するのは `metaphor` 側で、cli はそれに追随する側 (CONTRACT.md 契約点)。
 

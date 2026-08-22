@@ -514,27 +514,24 @@ final class MetaphorCLITests: XCTestCase {
         XCTAssertEqual(SyphonName.stable(for: URL(fileURLWithPath: "/")), "metaphor")
     }
 
-    func testUpdateSelfInstallsFrameworkBesideResolvedBinaryThroughSymlink() throws {
+    /// `update self` の fixture: `metaphor` + `templates` の tarball（実際の release.yml の
+    /// payload と同じ構成）と、scripts/install.sh / Homebrew が作る libexec + bin symlink の配置。
+    private func makeUpdateFixture(root: URL, withTemplates: Bool = true) throws -> (tarData: Data, symlink: URL, libexec: URL, binDir: URL) {
         let fm = FileManager.default
-        let root = temporaryDirectory()
-
-        // Build a release tarball fixture mirroring the real payload layout:
-        // metaphor + Syphon.framework + templates.
         let staging = root.appendingPathComponent("staging")
         try fm.createDirectory(at: staging, withIntermediateDirectories: true)
         try "NEW-BINARY".write(to: staging.appendingPathComponent("metaphor"), atomically: true, encoding: .utf8)
-        let fwVersionsA = staging.appendingPathComponent("Syphon.framework/Versions/A")
-        try fm.createDirectory(at: fwVersionsA, withIntermediateDirectories: true)
-        try "FRAMEWORK".write(to: fwVersionsA.appendingPathComponent("Syphon"), atomically: true, encoding: .utf8)
-        let templates = staging.appendingPathComponent("templates")
-        try fm.createDirectory(at: templates, withIntermediateDirectories: true)
-        try "x".write(to: templates.appendingPathComponent("placeholder.txt"), atomically: true, encoding: .utf8)
-
+        var members = ["metaphor"]
+        if withTemplates {
+            let templates = staging.appendingPathComponent("templates")
+            try fm.createDirectory(at: templates, withIntermediateDirectories: true)
+            try "x".write(to: templates.appendingPathComponent("placeholder.txt"), atomically: true, encoding: .utf8)
+            members.append("templates")
+        }
         let archiveURL = root.appendingPathComponent("release.tar.gz")
-        try runTar(["-czf", archiveURL.path, "-C", staging.path, "metaphor", "Syphon.framework", "templates"])
+        try runTar(["-czf", archiveURL.path, "-C", staging.path] + members)
         let tarData = try Data(contentsOf: archiveURL)
 
-        // Pre-create the libexec + bin-symlink layout that scripts/install.sh / Homebrew produce.
         let libexecMetaphor = root.appendingPathComponent("libexec/metaphor")
         try fm.createDirectory(at: libexecMetaphor, withIntermediateDirectories: true)
         try "OLD-BINARY".write(to: libexecMetaphor.appendingPathComponent("metaphor"), atomically: true, encoding: .utf8)
@@ -542,7 +539,10 @@ final class MetaphorCLITests: XCTestCase {
         try fm.createDirectory(at: binDir, withIntermediateDirectories: true)
         let symlink = binDir.appendingPathComponent("metaphor")
         try fm.createSymbolicLink(atPath: symlink.path, withDestinationPath: "../libexec/metaphor/metaphor")
+        return (tarData, symlink, libexecMetaphor, binDir)
+    }
 
+    private func makeUpdateTool(root: URL, tarData: Data, executablePath: URL) -> CommandLineTool {
         let assetURL = URL(string: "https://example.com/metaphor-cli_v9.0.0_macos_arm64.tar.gz")!
         let releases = StubReleaseService()
         releases.releases["shinyaoguri/metaphor-cli"] = GitHubRelease(
@@ -552,79 +552,73 @@ final class MetaphorCLITests: XCTestCase {
             assets: [GitHubRelease.Asset(name: "metaphor-cli_v9.0.0_macos_arm64.tar.gz", browserDownloadURL: assetURL, size: nil)]
         )
         releases.downloads[assetURL] = tarData
-
-        let tool = CommandLineTool(
+        return CommandLineTool(
             console: BufferedConsole(),
             processRunner: FoundationProcessRunner(),
             releaseService: releases,
             currentDirectory: root,
-            executablePath: symlink.path
+            executablePath: executablePath.path
         )
+    }
 
-        try tool.run(arguments: ["update", "self", "--force", "--no-verify", "--install-path", symlink.path])
+    func testUpdateSelfReplacesResolvedBinaryThroughSymlinkAndInstallsTemplates() throws {
+        let fm = FileManager.default
+        let root = temporaryDirectory()
+        let fixture = try makeUpdateFixture(root: root)
+        let tool = makeUpdateTool(root: root, tarData: fixture.tarData, executablePath: fixture.symlink)
 
-        // The framework must land beside the RESOLVED binary (libexec), not the symlink (bin).
-        XCTAssertTrue(
-            fm.fileExists(atPath: libexecMetaphor.appendingPathComponent("Syphon.framework/Versions/A/Syphon").path),
-            "Syphon.framework must be installed beside the resolved binary in libexec"
-        )
-        XCTAssertFalse(
-            fm.fileExists(atPath: binDir.appendingPathComponent("Syphon.framework").path),
-            "Framework must not be dropped next to the bin symlink"
-        )
+        try tool.run(arguments: ["update", "self", "--force", "--no-verify", "--install-path", fixture.symlink.path])
+
         XCTAssertEqual(
-            try String(contentsOf: libexecMetaphor.appendingPathComponent("metaphor"), encoding: .utf8),
+            try String(contentsOf: fixture.libexec.appendingPathComponent("metaphor"), encoding: .utf8),
             "NEW-BINARY",
-            "Resolved binary should be replaced with the new one"
+            "the RESOLVED binary (libexec) is replaced, not the symlink"
         )
-        let attrs = try fm.attributesOfItem(atPath: symlink.path)
+        let attrs = try fm.attributesOfItem(atPath: fixture.symlink.path)
         XCTAssertEqual(attrs[.type] as? FileAttributeType, .typeSymbolicLink, "bin entry must remain a symlink")
+        XCTAssertFalse(fm.fileExists(atPath: fixture.libexec.appendingPathComponent("metaphor.old").path), "backup is cleaned up on success")
         XCTAssertTrue(
             fm.fileExists(atPath: root.appendingPathComponent("share/metaphor/templates/placeholder.txt").path),
             "Templates should install under the prefix share dir"
         )
+        // The viewer talks to the sketch over the frame IPC: nothing else is installed beside the binary.
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: fixture.libexec.path), ["metaphor"])
     }
 
-    func testUpdateSelfRefusesArchiveWithoutFramework() throws {
+    func testUpdateSelfAcceptsBinaryOnlyArchive() throws {
+        // tarball に templates が無くても（= 最小の payload）binary の更新は成立する。
+        let root = temporaryDirectory()
+        let fixture = try makeUpdateFixture(root: root, withTemplates: false)
+        let tool = makeUpdateTool(root: root, tarData: fixture.tarData, executablePath: fixture.symlink)
+
+        try tool.run(arguments: ["update", "self", "--force", "--no-verify", "--install-path", fixture.symlink.path])
+
+        XCTAssertEqual(
+            try String(contentsOf: fixture.libexec.appendingPathComponent("metaphor"), encoding: .utf8),
+            "NEW-BINARY"
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("share/metaphor/templates").path))
+    }
+
+    func testUpdateSelfRollsBackTheBinaryWhenTemplatesCannotBeInstalled() throws {
         let fm = FileManager.default
         let root = temporaryDirectory()
-
-        // Legacy-style payload: binary only, no Syphon.framework.
-        let staging = root.appendingPathComponent("staging")
-        try fm.createDirectory(at: staging, withIntermediateDirectories: true)
-        try "NEW-BINARY".write(to: staging.appendingPathComponent("metaphor"), atomically: true, encoding: .utf8)
-        let archiveURL = root.appendingPathComponent("release.tar.gz")
-        try runTar(["-czf", archiveURL.path, "-C", staging.path, "metaphor"])
-        let tarData = try Data(contentsOf: archiveURL)
-
-        let installPath = root.appendingPathComponent("bin/metaphor")
-        try fm.createDirectory(at: installPath.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try "OLD-BINARY".write(to: installPath, atomically: true, encoding: .utf8)
-
-        let assetURL = URL(string: "https://example.com/metaphor-cli_v9.0.0_macos_arm64.tar.gz")!
-        let releases = StubReleaseService()
-        releases.releases["shinyaoguri/metaphor-cli"] = GitHubRelease(
-            tagName: "v9.0.0",
-            name: "v9.0.0",
-            prerelease: false,
-            assets: [GitHubRelease.Asset(name: "metaphor-cli_v9.0.0_macos_arm64.tar.gz", browserDownloadURL: assetURL, size: nil)]
-        )
-        releases.downloads[assetURL] = tarData
-
-        let tool = CommandLineTool(
-            console: BufferedConsole(),
-            processRunner: FoundationProcessRunner(),
-            releaseService: releases,
-            currentDirectory: root,
-            executablePath: installPath.path
-        )
+        let fixture = try makeUpdateFixture(root: root)
+        // templates の置き場（share/metaphor）をファイルで塞ぎ、templates の展開を失敗させる。
+        try fm.createDirectory(at: root.appendingPathComponent("share"), withIntermediateDirectories: true)
+        try "not a directory".write(to: root.appendingPathComponent("share/metaphor"), atomically: true, encoding: .utf8)
+        let tool = makeUpdateTool(root: root, tarData: fixture.tarData, executablePath: fixture.symlink)
 
         XCTAssertThrowsError(
-            try tool.run(arguments: ["update", "self", "--force", "--no-verify", "--install-path", installPath.path]),
-            "update self must refuse an archive missing Syphon.framework"
+            try tool.run(arguments: ["update", "self", "--force", "--no-verify", "--install-path", fixture.symlink.path])
         )
-        // The existing binary must be left intact (rolled back), not destroyed.
-        XCTAssertEqual(try String(contentsOf: installPath, encoding: .utf8), "OLD-BINARY")
+        // 新しい binary だけが残る半端な状態にしない: 旧 binary に戻り、backup も残さない。
+        XCTAssertEqual(
+            try String(contentsOf: fixture.libexec.appendingPathComponent("metaphor"), encoding: .utf8),
+            "OLD-BINARY",
+            "a failed update must roll the binary back"
+        )
+        XCTAssertFalse(fm.fileExists(atPath: fixture.libexec.appendingPathComponent("metaphor.old").path))
     }
 
     // brew インストール時のアップグレード案内は

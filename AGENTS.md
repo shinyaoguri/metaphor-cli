@@ -25,7 +25,7 @@ make setup             # 初回のみ: pre-push フック（契約チェック�
 swift build            # ビルド
 swift test             # テスト
 make release           # リリースビルド
-make install           # ~/.local 等へインストール（Syphon.framework 同梱）
+make install           # ~/.local 等へインストール（binary + templates）
 make doctor            # 環境診断
 ./scripts/check-contract.sh   # metaphor ⇄ metaphor-cli 契約チェック
 python3 scripts/smoke-sketch.py   # 実スケッチを run / watch で動かすスモーク（#153。数分かかる）
@@ -77,14 +77,12 @@ gh pr create --base main --title "feat: ..." --label release:skip   # 自動リ�
 **major は自動判定しない**（`!` 付きタイトルでも type どおりの bump）。major /
 v1.0 到達は必ず `release:major` ラベルで明示する。prerelease は Release workflow の
 `workflow_dispatch` で手動。連続マージ時は release.yml の concurrency が直列化し、
-待機中の重複リリースは最新 1 本にまとまる。Syphon pin の自動 bump PR は
-`release:patch` ラベル付きで作られ、マージで pin がユーザーへ届く。このラベル結合
-（`syphon-bump.yml` が貼り、`release-on-merge.yml` が読む）は
-`scripts/check-contract.sh` が機械検査する（#117）。
+待機中の重複リリースは最新 1 本にまとまる。
 
-上流 metaphor からのリリース連鎖（dispatch 受信 → pin bump → 本リポのリリース →
-homebrew-tap への Formula 反映）の全体地図は
-[metaphor の docs/release-pipeline.md](https://github.com/shinyaoguri/metaphor/blob/main/docs/release-pipeline.md)。
+本リポのリリースから homebrew-tap への Formula 反映までの地図は
+[metaphor の docs/release-pipeline.md](https://github.com/shinyaoguri/metaphor/blob/main/docs/release-pipeline.md)
+（本体のリリースに cli が追随する連鎖は、Syphon pin の契約が無くなったので無い —
+[ADR 0014](docs/decisions/0014-viewer-frame-ipc-drops-syphon-bundle.md)）。
 
 ## 気付きは Issue へ
 

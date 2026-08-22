@@ -48,13 +48,13 @@ Issue のタイトルは PR と同じ [Conventional Commits](https://www.convent
 ## 開発環境
 
 - Apple Silicon Mac / macOS 14+、Xcode 15+ / Swift 5.10+
-- 外部依存は Syphon.xcframework のみ（`Package.swift` が GitHub Release から checksum 付きで取得）
+- `Package.swift` に外部依存は無い（ライブビューアは frame IPC で本体と話す）
 
 ```bash
 swift build                   # ビルド
 swift test                    # テスト
 swift run metaphor --help     # ローカルビルドを直接実行
-make install                  # release ビルドを ~/.local へ導入（Syphon.framework 同梱）
+make install                  # release ビルドを ~/.local へ導入（binary + templates）
 make doctor                   # 環境診断
 ./scripts/check-contract.sh   # metaphor ⇄ metaphor-cli 契約チェック
 ```
@@ -92,8 +92,8 @@ PR 本文には目的・変更点・確認方法を書きます（テンプレ�
 
 ## クロスリポ契約に触れるとき
 
-環境変数 `METAPHOR_VIEWER` / `METAPHOR_SYPHON_NAME`、stdin へ送る JSON Lines 入力イベント、
-Probe ファイル、Syphon.xcframework の pin は `metaphor` 本体との**暗黙の契約**です。
+環境変数 `METAPHOR_VIEWER` / `METAPHOR_VIEWER_SOCKET` / `METAPHOR_SYPHON_NAME`、stdin へ送る
+JSON Lines 入力イベント、Probe ファイル、ライブビューアの frame IPC は `metaphor` 本体との**暗黙の契約**です。
 ここに触れる変更は `metaphor-cli` 単体では完結しません。
 
 - `metaphor` 側も同時に更新し、両リポの [CONTRACT.md](CONTRACT.md) を揃える

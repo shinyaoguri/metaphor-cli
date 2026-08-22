@@ -1,18 +1,17 @@
 name: Release pipeline audit
 
-# metaphor の安定版が brew まで届いたかを毎日 1 回だけ確かめる。
+# metaphor-cli の最新リリースが brew まで届いたかを毎日 1 回だけ確かめる。
 #
-# 配送は 4 段（dispatch → pin bump PR → cli リリース → tap の Formula）あり、
-# どの段で止まっても前後の段は緑のままになる。実際 metaphor 側の dispatch は
-# 資格情報が未設定のまま一度も発火せず、リリースは毎回成功扱いだった。
-# ここは個々のワークフローの成否を見ず、最終地点の Formula から逆算するので、
-# まだ知らない壊れ方も同じ 1 本で captured される。
+# release.yml が tap へ出す Formula PR が止まっても（PR 作成・test-bot・pr-pull の
+# どこでも）、cli 側の Release workflow は緑のままになる。ここは個々のワークフローの
+# 成否を見ず、最終地点の Formula から逆算するので、まだ知らない壊れ方も同じ 1 本で
+# 捕まる。
 #
 # しきい値(48h)内は「まだ配送中」として黙る。超えたら metaphor-cli に Issue を
-# 立て、全段揃った次の監査でその Issue を自動で閉じる。
+# 立て、Formula が最新を指した次の監査でその Issue を自動で閉じる。
 on:
   schedule:
-    - cron: '0 7 * * *'   # daily, 07:00 UTC — syphon-bump の週次 poll(06:17 UTC)の後
+    - cron: '0 7 * * *'   # daily, 07:00 UTC
   workflow_dispatch:
     inputs:
       max_lag_hours:

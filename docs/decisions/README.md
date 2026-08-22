@@ -15,7 +15,7 @@
 |---|---|
 | [0001](0001-github-flow.md) | ブランチ運用は単一 main の GitHub Flow に戻す |
 | [0002](0002-release-from-pr-title.md) | リリースの bump は PR タイトルから自動判定し、major は自動判定しない |
-| [0003](0003-syphon-pin-automation.md) | Syphon pin の追随は dispatch + 週次ポーリングの二段構えで自動化する |
+| [0003](0003-syphon-pin-automation.md) | (廃止 → 0014) Syphon pin の追随は dispatch + 週次ポーリングの二段構えで自動化する |
 | [0004](0004-wire-schema-canon.md) | クロスリポ契約は wire schema を正典にして守る |
 | [0005](0005-shared-session.md) | 共有セッション — `mcp` は `watch` にアタッチする観測クライアントにする |
 | [0006](0006-fsevents-watch.md) | 変更検知は FSEvents を主、低頻度ポーリングを安全網にする |
@@ -26,3 +26,4 @@
 | [0011](0011-issue-label-taxonomy.md) | Issue ラベルは `type:` / `status:` 体系にし、起票経路によらず自動付与する |
 | [0012](0012-editor-environment.md) | 専用エディタは作らず、VSCode の前提を同梱と `doctor` で担保する |
 | [0013](0013-stamp-vs-rebuild-trigger.md) | 刻印 (provenance) の対象とリビルドの引き金を別集合として保つ |
+| [0014](0014-viewer-frame-ipc-drops-syphon-bundle.md) | ライブビューアは frame IPC だけで受け、Syphon.framework を同梱しない |

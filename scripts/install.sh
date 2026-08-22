@@ -84,21 +84,12 @@ if [[ ! -f "$TMPDIR/$PRODUCT" ]]; then
   exit 1
 fi
 
-if [[ ! -d "$TMPDIR/Syphon.framework" ]]; then
-  echo "error: archive did not contain Syphon.framework." >&2
-  echo "       The $PRODUCT binary links Syphon and cannot launch without it." >&2
-  exit 1
-fi
-
-# The binary loads Syphon.framework from @loader_path (its own directory), so the
-# framework must sit beside the *real* binary. Install both into a private libexec
-# dir and expose the executable through a bin symlink — dyld resolves the symlink
-# before computing @loader_path, so the framework is found in libexec, $BINDIR
-# stays uncluttered, and no install_name_tool/codesign toolchain is required.
+# The real binary lives in a private libexec dir and is exposed through a bin
+# symlink — the same layout Homebrew and `metaphor update self` use, so every
+# install method resolves to one place and $BINDIR stays uncluttered.
 mkdir -p "$BINDIR" "$LIBEXECDIR" "$SHAREDIR"
 install -m 755 "$TMPDIR/$PRODUCT" "$LIBEXECDIR/$PRODUCT"
-rm -rf "$LIBEXECDIR/Syphon.framework"
-cp -R "$TMPDIR/Syphon.framework" "$LIBEXECDIR/Syphon.framework"
+rm -rf "$LIBEXECDIR/Syphon.framework"   # left behind by installs older than the frame IPC viewer
 rm -f "$BINDIR/$PRODUCT"
 ln -s "../libexec/metaphor/$PRODUCT" "$BINDIR/$PRODUCT"
 
@@ -107,12 +98,11 @@ if [[ -d "$TMPDIR/templates" ]]; then
   cp -R "$TMPDIR/templates" "$SHAREDIR/templates"
 fi
 
-# Fail loudly now if the bundled framework can't be resolved, instead of leaving
-# the user with a binary that aborts on first use.
+# Fail loudly now if the installed binary does not launch, instead of leaving
+# the user with one that aborts on first use.
 "$BINDIR/$PRODUCT" version >/dev/null
 
 echo "Installed $PRODUCT to $BINDIR/$PRODUCT -> $LIBEXECDIR/$PRODUCT"
-echo "Installed Syphon.framework to $LIBEXECDIR/Syphon.framework"
 echo "Installed templates to $SHAREDIR/templates"
 
 case ":$PATH:" in
