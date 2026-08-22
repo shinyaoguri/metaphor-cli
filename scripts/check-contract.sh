@@ -41,7 +41,8 @@ check() {
 }
 
 # check_regex <file> <description> <ERE> — pattern must match somewhere in file.
-# Used for format checks (Syphon pin URL/checksum shape) that a substring can't catch.
+# Used for format checks that a substring can't catch (currently unused: the Syphon
+# pin it guarded was retired with contract point 1; kept for the next shape check).
 check_regex() {
   file="$1"; desc="$2"; pat="$3"
   if [ ! -f "$file" ]; then
@@ -60,8 +61,18 @@ check_regex() {
 case "$REPO" in
   metaphor)
     # Env vars read by the headless/viewer runtime (contract point 2).
+    # METAPHOR_VIEWER_SOCKET selects the viewer frame IPC producer (point 5);
+    # METAPHOR_SYPHON_NAME is resolved by the Syphon output provider, but the runner
+    # still reads it to diagnose "an output was requested but no module is linked".
     check "Sources/MetaphorCore/Sketch/SketchRunner.swift" \
-      METAPHOR_VIEWER METAPHOR_SYPHON_NAME METAPHOR_FPS METAPHOR_PROBE
+      METAPHOR_VIEWER METAPHOR_VIEWER_SOCKET METAPHOR_SYPHON_NAME METAPHOR_FPS METAPHOR_PROBE
+    check "Sources/MetaphorSyphon/SyphonOutputProvider.swift" \
+      METAPHOR_SYPHON_NAME
+    # Viewer frame IPC protocol version VALUE (contract point 5). The message structure
+    # is the canon of contract/viewer-*.schema.json (check-contract-schema.sh); a bump
+    # here is a breaking change and CONTRACT.md must move too.
+    check "Sources/MetaphorCore/Viewer/ViewerFrameIPC.swift" \
+      "protocolVersion = 1"
     # stdin JSON Lines input: event tags AND field names parsed (contract point 3).
     check "Sources/MetaphorCore/Input/InputInjectionPlugin.swift" \
       mouseDown mouseUp mouseMove mouseDrag scroll keyDown keyUp \
@@ -99,9 +110,6 @@ case "$REPO" in
       ".metaphor/state" "save-request.json" METAPHOR_STATE METAPHOR_RESTORE_STATE
     check "Sources/MetaphorCore/State/SketchStateFile.swift" \
       "currentSchemaVersion = 1"
-    # Syphon Release dispatch event_type fired to metaphor-cli (auto-bump, L2a).
-    check ".github/workflows/release.yml" \
-      "event_type=syphon-release"
     # AI docs consumed by metaphor-cli's `api_reference` MCP tool (must exist).
     check "llms.txt"
     check "llms-sketch.txt"
@@ -113,9 +121,11 @@ case "$REPO" in
     check "contract/frame.schema.json"
     ;;
   metaphor-cli)
-    # Env vars set when spawning the child sketch (contract point 2).
+    # Env vars set when spawning the child sketch (contract point 2). The viewer
+    # listens on METAPHOR_VIEWER_SOCKET before the child starts (point 5);
+    # METAPHOR_SYPHON_NAME is only injected when --syphon-name / --syphon is explicit.
     check "Sources/MetaphorViewer/ViewerWatch.swift" \
-      METAPHOR_VIEWER METAPHOR_SYPHON_NAME METAPHOR_PROBE METAPHOR_FPS METAPHOR_STATE_DIR
+      METAPHOR_VIEWER METAPHOR_VIEWER_SOCKET METAPHOR_SYPHON_NAME METAPHOR_PROBE METAPHOR_FPS METAPHOR_STATE_DIR
     # METAPHOR_FPS is also wired on the --no-viewer path.
     check "Sources/MetaphorCLICore/WatchCommand.swift" \
       METAPHOR_FPS
@@ -160,25 +170,6 @@ case "$REPO" in
     # watch opts the child into the state plugin explicitly (contract point 8).
     check "Sources/MetaphorCLICore/WatchSession.swift" \
       METAPHOR_STATE
-    # Syphon.xcframework Release pin (binaryTarget fallback) — presence + format (contract point 1).
-    check "Package.swift" \
-      "releases/download/v" "checksum:"
-    check_regex "Package.swift" "Syphon release URL" \
-      "releases/download/v[0-9]+\.[0-9]+\.[0-9]+/Syphon\.xcframework\.zip"
-    check_regex "Package.swift" "Syphon checksum (sha256, 64 hex)" \
-      "checksum: \"[0-9a-f]{64}\""
-    # Syphon Release dispatch event_type received from metaphor (auto-bump, L2a).
-    check ".github/workflows/syphon-bump.yml" \
-      "syphon-release"
-    # Release-chain stage 2 -> 3 coupling: the bump PR's `chore:` title alone never
-    # releases — the release:patch label is the single thread that turns a merged pin
-    # bump into a cli release. The labeler (syphon-bump.yml) and the reader
-    # (release-on-merge.yml) must keep using the same label name (cli #117; see
-    # metaphor docs/release-pipeline.md for the chain).
-    check ".github/workflows/syphon-bump.yml" \
-      "release:patch"
-    check ".github/workflows/release-on-merge.yml" \
-      "release:patch"
     # AI doc filenames the `api_reference` MCP tool reads from the metaphor package.
     # `contract/frame.schema.json` is the doc=contract default; the other six schemas
     # are addressed as contract/<schema>.schema.json via the `schema` argument (#86).

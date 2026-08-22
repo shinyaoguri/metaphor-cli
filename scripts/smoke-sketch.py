@@ -49,9 +49,10 @@ SIGINT の後にまとめて flush された)。`[metrics]` 行だけ先に見�
     python3 scripts/smoke-sketch.py --only watch       # watch だけ
     python3 scripts/smoke-sketch.py --sketch-dir ~/work/my-sketch --keep
 
-`--headless` は子へ `METAPHOR_VIEWER=1` (契約点 5) を渡し、窓を開かずに
-Syphon へ publish させる。窓を開けない環境 (GUI セッションの無い CI) 向けの
-逃げ道で、ホットリロードの検査そのものは窓モードと同じだけ効く。
+`--headless` は子へ `METAPHOR_VIEWER=1` (契約点 5) を渡し、窓を開かずに動かす
+(フレームは Probe に書かれる。ビューア窓への frame IPC は `watch --viewer` 経路だけ)。
+窓を開けない環境 (GUI セッションの無い CI) 向けの逃げ道で、ホットリロードの検査
+そのものは窓モードと同じだけ効く。
 """
 
 import argparse
@@ -368,12 +369,12 @@ class Child:
         return [pid for pid in descendants if _alive(pid)]
 
 
-def child_environment(headless, syphon_name):
+def child_environment(headless):
     env = os.environ.copy()
     if headless:
-        # 契約点 5: METAPHOR_VIEWER=1 で窓を開かず Syphon へ publish する。
+        # 契約点 2: METAPHOR_VIEWER=1 で窓を開かない (出力は Probe。--metrics が
+        # METAPHOR_PROBE=1 を足す)。
         env["METAPHOR_VIEWER"] = "1"
-        env.setdefault("METAPHOR_SYPHON_NAME", syphon_name)
     return env
 
 
@@ -423,7 +424,7 @@ def checkout_sketch(repo, ref, sketch, dest):
 class Stage:
     """1 つのスモーク段。失敗の報告と後片付けをここに集める。"""
 
-    def __init__(self, name, binary, sketch_dir, args, log_dir, argv, syphon_name):
+    def __init__(self, name, binary, sketch_dir, args, log_dir, argv):
         self.name = name
         self.sketch_dir = sketch_dir
         self.args = args
@@ -434,7 +435,7 @@ class Stage:
             [binary] + argv,
             cwd=sketch_dir,
             log_path=self.log_path,
-            env=child_environment(args.headless, syphon_name),
+            env=child_environment(args.headless),
         )
 
     @property
@@ -480,7 +481,6 @@ def smoke_run(binary, sketch_dir, args, log_dir):
     stage = Stage(
         "run", binary, sketch_dir, args, log_dir,
         ["run", "--metrics", "--metrics-interval", "0.5"],
-        "metaphor-smoke-run",
     )
     try:
         mtime = wait_for_fresh_frame(
@@ -512,7 +512,6 @@ def smoke_watch(binary, sketch_dir, args, log_dir):
     stage = Stage(
         "watch", binary, sketch_dir, args, log_dir,
         ["watch", "--no-viewer", "--metrics", "--metrics-interval", "0.5"],
-        "metaphor-smoke-watch",
     )
     source_file = None
     original = None

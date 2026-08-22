@@ -44,7 +44,8 @@ public enum SharedSession {
         public let pid: Int32
         /// 対象スケッチの絶対パス。
         public let sketchPath: String
-        /// 子が publish する Syphon サーバー名（人間がビューアで覗くため）。
+        /// `--syphon-name` で要求した外部出力（Syphon）の名前。要求していなければ nil
+        /// （ビューアへのフレーム転送は frame IPC で、Syphon 名を使わない）。
         public let syphonName: String?
         /// 子が `METAPHOR_PROBE=1` で起動されているか（false だと snapshot 不可）。
         public let probeEnabled: Bool

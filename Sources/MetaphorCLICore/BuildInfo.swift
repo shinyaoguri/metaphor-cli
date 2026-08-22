@@ -23,6 +23,11 @@ public enum BuildInfo {
     /// **下限**。SwiftPM の `from:` は 0.x でも次の major (`<1.0.0`) まで許すため、値が
     /// 数世代古くても実際には最新の 0.x が解決される。
     public static let defaultMetaphorVersion = "0.9.0"
+
+    /// ライブビューアへのフレーム転送（frame IPC、CONTRACT.md 契約点 5）を話せる
+    /// metaphor ライブラリの最小版。これより古い本体をリンクしたスケッチは `watch` の
+    /// ビューアに接続してこないので、ビューアはこの版を案内する（metaphor#792）。
+    public static let minimumMetaphorVersionForViewer = "0.11.0"
     public static let cliRepositoryOwner = "shinyaoguri"
     public static let cliRepositoryName = "metaphor-cli"
     public static let libraryRepositoryOwner = "shinyaoguri"

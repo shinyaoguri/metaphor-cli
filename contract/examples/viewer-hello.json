@@ -1,0 +1,16 @@
+{
+  "t": "hello",
+  "protocolVersion": 1,
+  "pid": 48213,
+  "metaphor": "0.11.0",
+  "width": 1920,
+  "height": 1080,
+  "pixelFormat": "bgra8Unorm",
+  "alpha": "premultiplied",
+  "colorSpace": "sRGB",
+  "orientation": "topLeft",
+  "bytesPerRow": 7680,
+  "slotBytes": 8306688,
+  "slots": 3,
+  "backing": "posix-shm"
+}

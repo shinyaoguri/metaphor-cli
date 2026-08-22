@@ -131,8 +131,7 @@ final class VersionCommandTests: XCTestCase {
         try DoctorCommand(
             console: doctorConsole,
             processRunner: RecordingProcessRunner(),
-            currentDirectory: directory,
-            loadedImagePaths: { [] }
+            currentDirectory: directory
         ).run(arguments: [])
 
         XCTAssertEqual(

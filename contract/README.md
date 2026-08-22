@@ -3,7 +3,7 @@
 > **このディレクトリは両リポジトリ（`metaphor` と `metaphor-cli`）に同一内容で置かれます。**
 > 片方を変更したら、もう片方の `contract/` も同じ内容に更新してください（`CONTRACT.md` / `scripts/check-contract.sh` と同じ「両リポ identical」運用）。
 
-`.metaphor/` 配下のファイル契約——Probe（[CONTRACT.md](../CONTRACT.md) 契約点 4）・Parameter Store（同 契約点 7）・状態保持リロード（同 契約点 8）——の **wire 形式（JSON）を単一スキーマで正典化**したものです。設計判断は [docs/adr/0004-wire-schema-canon-vs-shared-types.md](../docs/adr/0004-wire-schema-canon-vs-shared-types.md)（案D 却下・案C+ 採用）と設計ノート [docs/design/external-coupling-and-contract.md](../docs/design/external-coupling-and-contract.md) を参照。
+`.metaphor/` 配下のファイル契約——Probe（[CONTRACT.md](../CONTRACT.md) 契約点 4）・Parameter Store（同 契約点 7）・状態保持リロード（同 契約点 8）——と、ライブビューアの **viewer frame IPC**（同 契約点 5。Unix socket 上の JSON Lines メッセージ）の **wire 形式（JSON）を単一スキーマで正典化**したものです。設計判断は [docs/adr/0004-wire-schema-canon-vs-shared-types.md](../docs/adr/0004-wire-schema-canon-vs-shared-types.md)（案D 却下・案C+ 採用）と設計ノート [docs/design/external-coupling-and-contract.md](../docs/design/external-coupling-and-contract.md) を参照。
 
 ## なぜ wire スキーマか（型共有ではなく）
 
@@ -20,9 +20,12 @@
 | `param-set-request.schema.json` | `ParameterSetRequest` | **consumer** (cli/AI) が `.metaphor/params/set-request.json` を出力 |
 | `state.schema.json` | `SketchStateFile` | **producer** (metaphor) が `.metaphor/state/state.json` を出力 |
 | `state-save-request.schema.json` | `SketchStateSaveRequest` | **consumer** (cli) が `.metaphor/state/save-request.json` を出力 |
+| `viewer-hello.schema.json` | `ViewerFrameIPC.Hello` | **producer** (metaphor) が socket へ送る（接続直後と resize 時。共有メモリの fd を `SCM_RIGHTS` で添える） |
+| `viewer-frame.schema.json` | `ViewerFrameIPC.Frame` | **producer** (metaphor) が slot の内容が確定するたびに socket へ送る |
+| `viewer-release.schema.json` | `ViewerFrameIPC.Release` | **consumer** (cli) が slot を読み終えるたびに socket へ送る |
 | `examples/*.json` | — | 正典サンプル payload（下記の二段検証の要） |
 
-JSON Schema draft 2020-12。Swift の実装（`Sources/MetaphorCore/Probe/`・`Sources/MetaphorCore/Parameters/`・`Sources/MetaphorCore/State/`）が正典で、スキーマはそれを機械可読に写したもの。
+JSON Schema draft 2020-12。Swift の実装（`Sources/MetaphorCore/Probe/`・`Sources/MetaphorCore/Parameters/`・`Sources/MetaphorCore/State/`・`Sources/MetaphorCore/Viewer/`）が正典で、スキーマはそれを機械可読に写したもの。viewer の 3 スキーマは 1 行 1 メッセージの JSON Lines で、`t` で種別を見分ける（未知の `t` / 未知フィールドは契約点 3 と同じく無視される）。
 
 ## 二段検証（何が保証され、何が保証されないか）
 
@@ -33,7 +36,7 @@ JSON Schema draft 2020-12。Swift の実装（`Sources/MetaphorCore/Probe/`・`S
               ∴ 推移的に 実エンコーダ出力 ⊨ schema
 ```
 
-- **producer 側**（metaphor）: `ProbeSchemaConformanceTests` / `ParameterSchemaConformanceTests` / `SketchStateSchemaConformanceTests` が実型のエンコード結果と `examples/` の構造一致を検証し、`scripts/check-contract-schema.sh` が `examples/` を各スキーマで検証する。
+- **producer 側**（metaphor）: `ProbeSchemaConformanceTests` / `ParameterSchemaConformanceTests` / `SketchStateSchemaConformanceTests` / `ViewerFrameIPCTests` が実型のエンコード結果と `examples/` の構造一致を検証し、`scripts/check-contract-schema.sh` が `examples/` を各スキーマで検証する。
 - **consumer 側**（cli）: request.json 生成経路のテストと、同じ `check-contract-schema.sh`。
 
 **保証される**: JSON の構造・キー・値域・enum・`schemaVersion`（`const`）。grep では見られなかった consumer 出力も含む。
@@ -42,8 +45,8 @@ JSON Schema draft 2020-12。Swift の実装（`Sources/MetaphorCore/Probe/`・`S
 
 ## 変更手順
 
-1. `Sources/MetaphorCore/Probe/`（契約点 4）・`Sources/MetaphorCore/Parameters/`（契約点 7）・`Sources/MetaphorCore/State/`（契約点 8）の型を変える。
+1. `Sources/MetaphorCore/Probe/`（契約点 4）・`Sources/MetaphorCore/Viewer/`（契約点 5）・`Sources/MetaphorCore/Parameters/`（契約点 7）・`Sources/MetaphorCore/State/`（契約点 8）の型を変える。
 2. 対応する `*.schema.json` と `examples/*.json` を更新する。
 3. `make contract-schema`（= `scripts/check-contract-schema.sh`）と `swift test` を緑にする。
-4. キーのリネーム/削除/型変更なら `schemaVersion` を上げ、`CONTRACT.md` の該当節も更新。
+4. キーのリネーム/削除/型変更なら `schemaVersion`（viewer は `protocolVersion`）を上げ、`CONTRACT.md` の該当節も更新。
 5. **両リポジトリ**の `contract/` と `CONTRACT.md` を同一内容に揃え、もう片方に対応 PR/Issue を立てる。

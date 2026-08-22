@@ -43,7 +43,8 @@ push しっぱなしで CI の赤に気付かないのを防ぐため、Claude C
 | --- | --- |
 | `MetaphorCLI` | 薄いエントリポイント（`main.swift`）。`watch --viewer` を GUI へ、その他を Core へ振り分けるだけ。 |
 | `MetaphorCLICore` | テスト可能なビジネスロジック。コマンド、watch セッション、MCP サーバ、テンプレート、リリース/更新、バイナリ解決。GUI 非依存。 |
-| `MetaphorViewer` | GUI 層（AppKit / MetalKit / Syphon）。ライブビューア窓、フレーム供給元（`FrameSource`。現在は Syphon 受信の `SyphonFrameSource`）、描画、状態オーバーレイ。 |
+| `MetaphorViewer` | GUI 層（AppKit / MetalKit）。ライブビューア窓、フレーム供給元（`FrameSource`。実装は frame IPC の `FrameIPCSource` = 共有メモリを `MTLBuffer(bytesNoCopy:)` で読む）、描画、状態オーバーレイ。 |
+| `CMetaphorFrameIPC` | C シム。frame IPC のうち Swift から呼べない `shm_open` / `SCM_RIGHTS`（`sendmsg` / `recvmsg`）だけを包む。 |
 
 `MetaphorCLICore` は副作用を `Console` / `ProcessRunning` / `ProcessLaunching` /
 `FileWatching` / `SketchBinaryResolving` といったプロトコル越しに扱い、テストでモックを

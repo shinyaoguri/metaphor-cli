@@ -7,8 +7,8 @@ import QuartzCore
 /// 子スケッチのフレームをウィンドウに表示するライブビューア。
 ///
 /// `MTKView` に最新テクスチャをアスペクト比保持（レターボックス）で表示する。
-/// フレームは ``FrameSource``（転送路の抽象。現在は Syphon 受信の ``SyphonFrameSource``）
-/// から取得する。metaphor は flipped:true で publish するため、サンプリング時に上下反転する。
+/// フレームは ``FrameSource``（転送路の抽象。現在は frame IPC の ``FrameIPCSource``）
+/// から取得する。フレームは row 0 = top の正立（CONTRACT.md 契約点 5）。
 public final class ViewerWindow: NSObject, MTKViewDelegate {
     private let device: MTLDevice
     private let commandQueue: MTLCommandQueue
@@ -41,9 +41,8 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
     /// 一度でもフレームを描いたか。全面オーバーレイか右下バッジかの出し分けに使う。
     private var hasRenderedFrame = false
 
-    /// 供給元への接続待ちが長引き、復帰を試みている段階か（``FrameSource/status`` が
-    /// `.helloTimedOut` のとき）。「待てば来る」のか「復帰を試みている」のかを利用者が
-    /// 区別できるよう表示に反映する。
+    /// 供給元への接続待ちが長引いているか（``FrameSource/status`` が `.helloTimedOut`）。
+    /// 「待てば来る」のか「何かおかしい」のかを利用者が区別できるよう表示に反映する。
     private var isReconnecting = false
 
     /// 全面ローディング表示（フレーム未取得時）。
@@ -157,6 +156,9 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
         refreshOverlay()
     }
 
+    /// 現在の段階（`ViewerWatch` が「子の終了」を出すかどうかの判断に読む）。
+    public var currentState: ViewerState { state }
+
     /// 現在の `state` と `hasRenderedFrame` から、全面オーバーレイと右下バッジの
     /// 表示内容・表示/非表示を決める。
     private func refreshOverlay() {
@@ -181,14 +183,14 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
             }
 
         case .launching:
-            // 待機が長引いているときは、ただ待っているのではなく復帰を試みていることを見せる
-            // （供給元の `.helloTimedOut`。Syphon では announce 取りこぼしからの自力復帰中。Issue #139）。
+            // 待機が長引いているとき（供給元の `.helloTimedOut`）は、ただ待っているのではない
+            // ことを見せる。子が生きているなら `ViewerWatch` が `.unsupportedLibrary` へ進める。
             if hasRenderedFrame {
                 fullOverlay.isHidden = true
                 badge.isHidden = false
                 badge.configure(
                     spinning: true,
-                    text: isReconnecting ? "再接続を試行中…" : "新しいフレームを待機中…"
+                    text: isReconnecting ? "接続を待っています…（長引いています）" : "新しいフレームを待機中…"
                 )
             } else {
                 badge.isHidden = true
@@ -196,7 +198,35 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
                 fullOverlay.configure(
                     mode: .loading,
                     title: "スケッチを起動中…",
-                    detail: isReconnecting ? "フレーム供給元へ再接続を試行中です" : "スケッチの出力を待機しています"
+                    detail: isReconnecting ? "スケッチからの接続が来ません" : "スケッチの出力を待機しています"
+                )
+            }
+
+        case .unsupportedLibrary(let required):
+            // 子は動いているのに hello が来ない = スケッチの metaphor がビューアと話せない。
+            let detail = "スケッチの metaphor が古く、ビューアにフレームを送れません。"
+                + "Package.swift の metaphor を \(required) 以上にして再ビルドしてください"
+            if hasRenderedFrame {
+                fullOverlay.isHidden = true
+                badge.isHidden = false
+                badge.configure(spinning: false, text: "⚠ metaphor \(required) 以上が必要 — 直前の表示を維持")
+            } else {
+                badge.isHidden = true
+                fullOverlay.isHidden = false
+                fullOverlay.configure(mode: .failed, title: "metaphor \(required) 以上が必要です", detail: detail)
+            }
+
+        case .childExited:
+            if hasRenderedFrame {
+                fullOverlay.isHidden = true
+                badge.isHidden = false
+                badge.configure(spinning: false, text: "⚠ スケッチが終了しました — 直前の表示を維持")
+            } else {
+                badge.isHidden = true
+                fullOverlay.isHidden = false
+                fullOverlay.configure(
+                    mode: .failed, title: "スケッチが終了しました",
+                    detail: "ターミナルのログを確認してください。変更を保存すると再ビルドして起動し直します"
                 )
             }
 
@@ -316,13 +346,13 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
         // 再起動後の子への切り替えと、そこからの自力復帰まで面倒を見る。
         source.poll()
 
-        // 復帰試行に入った/抜けたら表示とログを更新する（毎フレーム再構成はしない）。
+        // 待ちが長引き始めた/解消したら表示とログを更新する（毎フレーム再構成はしない）。
         let reconnecting = source.status == .helloTimedOut
         if reconnecting != isReconnecting {
             isReconnecting = reconnecting
             let message = isReconnecting
-                ? "[viewer] 新しいフレーム供給元が見つかりません。再接続を試みます…\n"
-                : "[viewer] フレーム供給元へ接続し直しました\n"
+                ? "[viewer] スケッチからの接続が来ません（\(Int(FrameIPCSource.helloTimeout)) 秒）。本体の版が古い可能性があります\n"
+                : "[viewer] スケッチと接続しました\n"
             FileHandle.standardError.write(message.data(using: .utf8)!)
             refreshOverlay()
         }
@@ -389,6 +419,9 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
                 encoder.setRenderPipelineState(pipeline)
                 encoder.setFragmentTexture(texture, index: 0)
                 encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+                // この command buffer がこのフレーム（slot）を読む。完了したら供給元が子へ
+                // `release` を返せるように知らせる（契約点 5 の同期）。
+                source.noteSampling(of: texture, in: commandBuffer)
             }
             encoder.endEncoding()
         }
@@ -414,8 +447,7 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
     // MARK: - Helpers
 
     /// フルスクリーン三角形で held テクスチャをサンプルする blit パイプライン。
-    /// 現在の供給元（Syphon）のフレームは上下反転しているため、その前提で UV を組む
-    /// （frame IPC への移行時に正立入力へ変える。metaphor#792）。
+    /// 入力は row 0 = top の正立（契約点 5）。
     private static func makeBlitPipeline(device: MTLDevice) -> MTLRenderPipelineState? {
         let source = """
         #include <metal_stdlib>
@@ -425,9 +457,9 @@ public final class ViewerWindow: NSObject, MTKViewDelegate {
             float2 p[3] = { float2(-1.0, -1.0), float2(3.0, -1.0), float2(-1.0, 3.0) };
             VOut o;
             o.pos = float4(p[vid], 0.0, 1.0);
-            // オフスクリーン描画では NDC→テクスチャの Y 反転が入るため、ここでは
-            // V を反転しない（これで Syphon の上下反転と合わせて正立になる）。
-            o.uv = float2((p[vid].x + 1.0) * 0.5, (p[vid].y + 1.0) * 0.5);
+            // NDC の y は上が +1、テクスチャの v は row 0 = top なので V を反転して
+            // 正立のまま写す（blit 先のドローアブルも row 0 = top）。
+            o.uv = float2((p[vid].x + 1.0) * 0.5, 1.0 - (p[vid].y + 1.0) * 0.5);
             return o;
         }
         fragment float4 blit_f(VOut in [[stage_in]], texture2d<float> tex [[texture(0)]]) {

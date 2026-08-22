@@ -2,7 +2,7 @@
 
 `metaphor-cli` は `metaphor`（Swift 製クリエイティブコーディングライブラリ）の
 コマンドラインフロントエンド。スケッチの作成（`new` / `init`）・実行（`run`）・
-ライブリロード（`watch`。既定で Syphon 経由のライブビューア窓を常設）・
+ライブリロード（`watch`。既定でライブビューア窓を常設し、子スケッチから frame IPC でフレームを受ける）・
 AI エージェント向け MCP サーバ（`mcp`）・環境診断（`doctor`）・更新（`update`）を
 提供する。macOS (Apple Silicon) 専用。
 
@@ -34,8 +34,8 @@ python3 scripts/smoke-sketch.py   # 実スケッチを run / watch で動かす�
 ## Cross-Repo Contract (metaphor ⇄ metaphor-cli)
 
 `metaphor-cli` は `metaphor`（`shinyaoguri/metaphor`）を Swift ライブラリとしては
-依存していないが、**ランタイム/バイナリの暗黙の契約**で結合している（環境変数・
-stdin JSON Lines 入力・Probe ファイル・Syphon の Release pin）。完全な一覧と
+依存していないが、**ランタイムの暗黙の契約**で結合している（環境変数・
+stdin JSON Lines 入力・Probe ファイル・ライブビューアの frame IPC）。完全な一覧と
 変更ルールは **[CONTRACT.md](CONTRACT.md)** を参照。
 
 **重要（エージェント向け）**: 以下に触れる変更は `metaphor-cli` 単体では完結しない。
@@ -43,14 +43,13 @@ stdin JSON Lines 入力・Probe ファイル・Syphon の Release pin）。完�
 `./scripts/check-contract.sh` が緑であることを確認すること。片方だけ作業中なら
 もう片方に対応 PR/Issue を必ず立てる。
 
-- 子プロセス起動時の環境変数 `METAPHOR_VIEWER` / `METAPHOR_SYPHON_NAME`（`ViewerWatch.swift` / `Watch.swift`）
+- 子プロセス起動時の環境変数 `METAPHOR_VIEWER` / `METAPHOR_VIEWER_SOCKET` / `METAPHOR_SYPHON_NAME`（`ViewerWatch.swift` / `Watch.swift`）
 - stdin へ送る入力イベントの JSON Lines キー/値（`ViewerWindow.swift`：`mouseDown` 等）
-- Syphon.xcframework の Release pin（`Package.swift` の URL + checksum、`metaphor` が発行）
-- Syphon 受信（`SyphonFrameSource.swift`）
+- ライブビューアの frame IPC（契約点 5: Unix socket + 共有メモリの `hello` / `frame` / `release`。
+  consumer は `Sources/MetaphorViewer/FrameIPCSource.swift` と `Sources/MetaphorCLICore/Viewer/`、
+  wire の正典は `contract/viewer-*.schema.json`）
 
-CI は `scripts/check-contract.sh` で契約トークンの消失を検知する。Syphon pin は
-`metaphor` の安定版 Release 時に `repository_dispatch`（`syphon-release`）を受けて
-`.github/workflows/syphon-bump.yml` が自動更新 PR を作成する。
+CI は `scripts/check-contract.sh` で契約トークンの消失を検知する。
 
 ## Branching (GitHub Flow)
 
